@@ -3,6 +3,8 @@ import { access, mkdir, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
+import { githubGitAuthorizationHeader } from './git-auth.js'
+
 const execFileAsync = promisify(execFile)
 
 async function exists(target) {
@@ -36,7 +38,7 @@ async function gitEnvironment(settings, source) {
     if (token) {
       environment.GIT_CONFIG_COUNT = String(configIndex + 1)
       environment[`GIT_CONFIG_KEY_${configIndex}`] = 'http.https://github.com/.extraHeader'
-      environment[`GIT_CONFIG_VALUE_${configIndex}`] = `Authorization: Bearer ${token}`
+      environment[`GIT_CONFIG_VALUE_${configIndex}`] = githubGitAuthorizationHeader(token)
     }
   }
   return environment

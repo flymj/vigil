@@ -2,6 +2,8 @@ import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
 
+import { githubGitAuthorizationHeader } from './git-auth.js'
+
 const execFileAsync = promisify(execFile)
 
 function cleanProject(value) {
@@ -216,7 +218,7 @@ export async function inspectRepositoryAddress(address, settings = {}) {
     if (token) {
       credentialEnvironment.GIT_CONFIG_COUNT = String(configIndex + 1)
       credentialEnvironment[`GIT_CONFIG_KEY_${configIndex}`] = 'http.https://github.com/.extraHeader'
-      credentialEnvironment[`GIT_CONFIG_VALUE_${configIndex}`] = `Authorization: Bearer ${token}`
+      credentialEnvironment[`GIT_CONFIG_VALUE_${configIndex}`] = githubGitAuthorizationHeader(token)
     }
   }
   let stdout
