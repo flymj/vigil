@@ -34,6 +34,10 @@ function githubSource(project) {
   }
 }
 
+function isGithubHost(host) {
+  return String(host || '').trim().toLowerCase() === 'github.com'
+}
+
 function gerritSource({ host, project, cloneUrl, protocol = 'https:' }) {
   const webProtocol = protocol === 'http:' ? 'http:' : 'https:'
   const apiBaseUrl = `${webProtocol}//${host}`
@@ -58,6 +62,10 @@ export function parseRepositoryAddress(addressValue) {
   if (scpLike && !address.includes('://')) {
     const [, user, host, rawProject] = scpLike
     const project = cleanProject(rawProject)
+    if (isGithubHost(host)) {
+      if (project.split('/').length !== 2) throw new Error('GitHub 地址必须包含 owner/repository')
+      return githubSource(project)
+    }
     return gerritSource({
       host,
       project,
@@ -76,7 +84,7 @@ export function parseRepositoryAddress(addressValue) {
     throw new Error(`暂不支持 ${url.protocol} 仓库地址`)
   }
   const hostname = url.hostname.toLowerCase()
-  if (hostname === 'github.com') {
+  if (isGithubHost(hostname)) {
     const project = cleanProject(url.pathname)
     if (project.split('/').length !== 2) throw new Error('GitHub 地址必须包含 owner/repository')
     return githubSource(project)
@@ -99,8 +107,12 @@ export function normalizeRepositorySource(sourceValue = {}) {
   if (sourceValue.sourceType && !['github', 'gerrit'].includes(sourceValue.sourceType)) {
     throw new Error('Repository source type must be github or gerrit')
   }
-  const sourceType = sourceValue.sourceType === 'gerrit' ? 'gerrit' : 'github'
-  const host = String(sourceValue.host || (sourceType === 'github' ? 'github.com' : '')).trim().toLowerCase()
+  const declaredSourceType = sourceValue.sourceType === 'gerrit' ? 'gerrit' : 'github'
+  const declaredHost = String(sourceValue.host || (declaredSourceType === 'github' ? 'github.com' : '')).trim().toLowerCase()
+  // Older Vigil versions parsed git@github.com:owner/repository as Gerrit.
+  // Treat those persisted records as GitHub so existing watchlists self-heal.
+  const sourceType = declaredSourceType === 'gerrit' && isGithubHost(declaredHost) ? 'github' : declaredSourceType
+  const host = sourceType === 'github' ? 'github.com' : declaredHost
   const project = cleanProject(sourceValue.project)
   const branch = String(sourceValue.branch || '').trim()
   if (!host) throw new Error('Repository host is required')

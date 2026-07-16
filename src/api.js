@@ -1,5 +1,6 @@
 async function request(path, options = {}) {
   const response = await fetch(path, {
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,
   })
@@ -10,6 +11,21 @@ async function request(path, options = {}) {
   return payload
 }
 
+export function getAuthenticationStatus() {
+  return request('/api/auth/status')
+}
+
+export function login(username, password) {
+  return request('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  })
+}
+
+export function logout() {
+  return request('/api/auth/logout', { method: 'POST' })
+}
+
 export function getAnalysisSettings() {
   return request('/api/settings/analysis')
 }
@@ -18,6 +34,13 @@ export function saveAnalysisSettings(settings) {
   return request('/api/settings/analysis', {
     method: 'PUT',
     body: JSON.stringify(settings),
+  })
+}
+
+export function saveProviderApiKey(apiKey) {
+  return request('/api/settings/provider-key', {
+    method: 'PUT',
+    body: JSON.stringify({ apiKey }),
   })
 }
 

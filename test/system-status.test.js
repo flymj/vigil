@@ -12,7 +12,7 @@ test('system status reports only observed local configuration and repository sta
     workspace: { directory },
     github: { tokenEnv: 'TEST_GITHUB_TOKEN' },
     gerrit: { usernameEnv: 'TEST_GERRIT_USER', passwordEnv: 'TEST_GERRIT_PASSWORD' },
-    provider: { name: 'Local provider', baseUrl: 'http://127.0.0.1:9000/v1', model: 'test-model', apiKeyEnv: 'TEST_PROVIDER_KEY' },
+    provider: { name: 'Local provider', baseUrl: 'http://127.0.0.1:9000/v1', model: 'test-model', requiresApiKey: true },
   }
   const repositories = [
     { sourceType: 'github', syncMode: 'full', syncStatus: 'ready' },

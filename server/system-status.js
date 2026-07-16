@@ -1,4 +1,6 @@
 import { access } from 'node:fs/promises'
+import { hasConfiguredAdmin } from './auth.js'
+import { providerCredentialStatus } from './config.js'
 
 function environmentConfigured(name, environment) {
   return Boolean(name && environment[name])
@@ -16,9 +18,7 @@ export async function collectSystemStatus(settings, repositories, environment = 
   const githubTokenConfigured = environmentConfigured(settings.github.tokenEnv, environment)
   const gerritUsernameConfigured = environmentConfigured(settings.gerrit.usernameEnv, environment)
   const gerritPasswordConfigured = environmentConfigured(settings.gerrit.passwordEnv, environment)
-  const providerCredentialConfigured = settings.provider.apiKeyEnv
-    ? environmentConfigured(settings.provider.apiKeyEnv, environment)
-    : true
+  const providerCredential = await providerCredentialStatus(settings)
 
   return {
     checkedAt: new Date().toISOString(),
@@ -44,9 +44,10 @@ export async function collectSystemStatus(settings, repositories, environment = 
       name: settings.provider.name,
       model: settings.provider.model,
       endpointConfigured: Boolean(settings.provider.baseUrl && settings.provider.model),
-      credentialConfigured: providerCredentialConfigured,
+      credentialConfigured: providerCredential.apiKeyConfigured,
+      credentialRequired: providerCredential.requiresApiKey,
     },
-    authentication: { configured: false },
+    authentication: { configured: await hasConfiguredAdmin() },
     audit: { configured: false },
   }
 }

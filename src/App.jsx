@@ -40,7 +40,7 @@ import {
   ExternalLink,
   X,
 } from 'lucide-react'
-import { addWatchedRepository, generateRepositorySummary, getAnalysisSettings, getDigitalHumanAdapterStatus, getHotPullRequests, getSystemStatus, getWatchedRepositories, inspectRepositoryAddress, repositorySummaryDownloadUrl, saveAnalysisSettings, snoopPullRequest, syncWatchedRepository, testProvider } from './api'
+import { addWatchedRepository, generateRepositorySummary, getAnalysisSettings, getAuthenticationStatus, getDigitalHumanAdapterStatus, getHotPullRequests, getSystemStatus, getWatchedRepositories, inspectRepositoryAddress, login, repositorySummaryDownloadUrl, saveAnalysisSettings, saveProviderApiKey, snoopPullRequest, syncWatchedRepository, testProvider } from './api'
 
 const navigation = [
   { id: 'overview', label: '态势总览', icon: LayoutDashboard },
@@ -88,6 +88,15 @@ function App() {
   const [selectedRepository, setSelectedRepository] = useState(null)
   const [notice, setNotice] = useState('')
   const [theme, setTheme] = useState(initialTheme)
+  const [authentication, setAuthentication] = useState({ loading: true, authenticated: false, setupRequired: false, user: null, error: '' })
+
+  useEffect(() => {
+    let active = true
+    getAuthenticationStatus()
+      .then((status) => { if (active) setAuthentication({ loading: false, error: '', ...status }) })
+      .catch((error) => { if (active) setAuthentication({ loading: false, authenticated: false, setupRequired: false, user: null, error: error.message }) })
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -106,6 +115,11 @@ function App() {
 
   useEffect(() => {
     let active = true
+    if (!authentication.authenticated) {
+      setRepositories([])
+      setRepositoriesState({ loading: false, error: '' })
+      return () => { active = false }
+    }
     getWatchedRepositories()
       .then(({ repositories: persisted }) => {
         if (!active) return
@@ -117,7 +131,7 @@ function App() {
         if (active) setRepositoriesState({ loading: false, error: error.message })
       })
     return () => { active = false }
-  }, [])
+  }, [authentication.authenticated])
 
   useEffect(() => {
     if (!notice) return undefined
@@ -162,6 +176,9 @@ function App() {
     setSelectedRepository(repository)
   }
 
+  if (authentication.loading) return <LoginScreen loading />
+  if (!authentication.authenticated) return <LoginScreen setupRequired={authentication.setupRequired} error={authentication.error} onAuthenticated={(user) => setAuthentication({ loading: false, authenticated: true, setupRequired: false, user, error: '' })} />
+
   return (
     <div className="app-shell">
       <Sidebar page={page} navigate={navigate} open={sidebarOpen} repositoryCount={repositories.length} />
@@ -182,7 +199,7 @@ function App() {
           {page === 'repository-detail' && (selectedRepository ? <RepositoryDetail repository={selectedRepository} onBack={() => navigate('repositories')} onRepositoryUpdated={updateRepository} /> : <EmptyState icon={Github} title="未选择观察项目" description="请先从观察项目列表打开一个真实仓库。" action="返回观察项目" onAction={() => navigate('repositories')} />)}
           {page === 'topics' && <TopicsView />}
           {page === 'windows' && <WindowsView />}
-          {page === 'admin' && <AdminView />}
+          {page === 'admin' && <AdminView authentication={authentication} />}
         </main>
       </div>
 
@@ -192,6 +209,29 @@ function App() {
       {notice && <div className="toast"><FileCheck2 size={17} />{notice}</div>}
     </div>
   )
+}
+
+function LoginScreen({ loading = false, setupRequired = false, error: initialError = '', onAuthenticated }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState(initialError)
+  const [submitting, setSubmitting] = useState(false)
+
+  const submit = async (event) => {
+    event.preventDefault()
+    setSubmitting(true)
+    setError('')
+    try {
+      const result = await login(username, password)
+      onAuthenticated?.(result.user)
+    } catch (loginError) {
+      setError(loginError.message)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return <main className="login-shell"><section className="login-card"><span className="login-mark"><LockKeyhole size={22} /></span><span>VIGIL / ACCESS CONTROL</span><h1>{loading ? '正在验证访问权限' : setupRequired ? '尚未配置管理员' : '管理员登录'}</h1>{loading ? <p>正在连接本地服务。</p> : setupRequired ? <p>请在服务端设置 <code>VIGIL_ADMIN_USERNAME</code> 与 <code>VIGIL_ADMIN_PASSWORD</code> 后重启 Vigil。首次启动会创建唯一的管理员账户。</p> : <form onSubmit={submit}><label>用户名<input autoFocus autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} /></label><label>密码<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>{error && <p className="field-error">{error}</p>}<button className="primary-button" disabled={submitting}>{submitting ? '正在验证' : '登录'} <ArrowRight size={15} /></button></form>}<small>未认证用户无法读取或修改 Vigil API。</small></section></main>
 }
 
 function Sidebar({ page, navigate, open, repositoryCount }) {
@@ -620,21 +660,21 @@ function WindowsView() {
   )
 }
 
-function AdminView() {
+function AdminView({ authentication }) {
   const [tab, setTab] = useState('analysis')
   return (
     <div className="page-enter admin-page">
       <div className="security-boundary">
-        <div className="boundary-copy"><span className="security-icon"><LockKeyhole size={20} /></span><div><small>AUTHENTICATION NOT CONFIGURED</small><h2>当前运行在本地单用户模式。</h2><p>PAM、Session、RBAC、配额与审计仍是待实现边界；此版本不会伪造用户或授权记录。</p></div></div>
-        <div className="boundary-flow"><span>PAM</span><ChevronRight size={14} /><span>USER</span><ChevronRight size={14} /><span>RBAC</span><ChevronRight size={14} /><span>QUOTA</span><ChevronRight size={14} /><span>AUDIT</span></div>
+        <div className="boundary-copy"><span className="security-icon"><LockKeyhole size={20} /></span><div><small>ADMIN SESSION ENABLED</small><h2>管理员认证已启用。</h2><p>未登录用户无法读取或修改 Vigil API。当前第一阶段只支持服务端初始化的管理员；PAM、多角色、配额与审计仍是后续边界。</p></div></div>
+        <div className="boundary-flow"><span>BOOTSTRAP ADMIN</span><ChevronRight size={14} /><span>SESSION</span><ChevronRight size={14} /><span>RBAC · NEXT</span><ChevronRight size={14} /><span>AUDIT · NEXT</span></div>
       </div>
       <div className="admin-tabs">
         {[['users','用户与角色'],['analysis','分析引擎'],['system','系统状态'],['audit','审计日志']].map(([id, label]) => <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>{label}</button>)}
       </div>
       {tab === 'users' && (
         <section className="admin-section">
-          <div className="admin-section-head"><div><h2>用户与角色</h2><p>身份认证与授权存储尚未接入。</p></div><button className="primary-button" disabled><Plus size={16} /> 添加授权</button></div>
-          <EmptyState icon={Users} title="没有用户数据" description="当前版本不加载演示账号。接入真实认证与 RBAC 后，这里再展示实际用户。" />
+          <div className="admin-section-head"><div><h2>管理员账户</h2><p>首次启动由服务端环境变量初始化，密码只存为 scrypt 哈希。</p></div><StatusPill status="ready" /></div>
+          <div className="empty-state"><Users size={26} /><h3>{authentication.user?.username || 'admin'} · administrator</h3><p>当前会话拥有系统配置权限。多管理员、角色分级与 PAM 需要在后续接入真实身份目录后启用。</p></div>
         </section>
       )}
       {tab === 'analysis' && <AnalysisSettings />}
@@ -648,7 +688,7 @@ const fallbackAnalysisSettings = {
   workspace: { directory: '.vigil/workspace' },
   github: { apiBaseUrl: 'https://api.github.com', tokenEnv: 'GITHUB_TOKEN', requestTimeoutSeconds: 30 },
   gerrit: { usernameEnv: 'GERRIT_USERNAME', passwordEnv: 'GERRIT_HTTP_PASSWORD', requestTimeoutSeconds: 30 },
-  provider: { name: 'OpenAI compatible', baseUrl: 'https://api.openai.com/v1', apiKeyEnv: 'OPENAI_API_KEY', model: 'gpt-4.1-mini', timeoutSeconds: 120, temperature: 0.2, maxOutputTokens: 6000 },
+  provider: { name: 'OpenAI compatible', baseUrl: 'https://api.openai.com/v1', requiresApiKey: true, model: 'gpt-4.1-mini', timeoutSeconds: 120, temperature: 0.2, maxOutputTokens: 6000 },
   deepDive: { enabled: true, pullRequests: true, releases: true, criticalPaths: true, attentionThreshold: 80, changedLinesThreshold: 500, maxContextFiles: 24, maxDiffBytes: 2097152 },
   repositoryContext: { strategy: 'git-mirror', fetchOnDeepDive: true },
   digitalHuman: { enabled: false, bindingRef: '', adapter: 'unconfigured' },
@@ -656,7 +696,8 @@ const fallbackAnalysisSettings = {
 
 function AnalysisSettings() {
   const [settings, setSettings] = useState(fallbackAnalysisSettings)
-  const [credential, setCredential] = useState({ apiKeyConfigured: false, apiKeyEnv: 'OPENAI_API_KEY' })
+  const [credential, setCredential] = useState({ apiKeyConfigured: false, requiresApiKey: true, providerReady: false })
+  const [apiKey, setApiKey] = useState('')
   const [adapterStatus, setAdapterStatus] = useState({ status: 'loading', contract: 'pending', digitalHumans: [] })
   const [state, setState] = useState({ loading: true, action: '', message: '', error: '' })
 
@@ -680,9 +721,11 @@ function AnalysisSettings() {
     setState({ loading: false, action: 'save', message: '', error: '' })
     try {
       const payload = await saveAnalysisSettings(settings)
+      const keyPayload = apiKey.trim() ? await saveProviderApiKey(apiKey) : null
       setSettings(payload.settings)
-      setCredential(payload.credential)
-      setState({ loading: false, action: '', message: 'Workspace、Provider 与数字人绑定已保存', error: '' })
+      setCredential(keyPayload?.credential || payload.credential)
+      setApiKey('')
+      setState({ loading: false, action: '', message: apiKey.trim() ? 'Workspace、Provider 与加密 API Key 已保存' : 'Workspace、Provider 与数字人绑定已保存', error: '' })
     } catch (error) {
       setState({ loading: false, action: '', message: '', error: error.message })
     }
@@ -742,14 +785,14 @@ function AnalysisSettings() {
           <label className="settings-field"><span>Base URL</span><input value={provider.baseUrl} onChange={(event) => update('provider', 'baseUrl', event.target.value)} placeholder="https://api.openai.com/v1" /></label>
           <div className="settings-field-grid">
             <label className="settings-field"><span>Model</span><input value={provider.model} onChange={(event) => update('provider', 'model', event.target.value)} /></label>
-            <label className="settings-field"><span>API Key environment</span><input value={provider.apiKeyEnv} onChange={(event) => update('provider', 'apiKeyEnv', event.target.value)} placeholder="留空表示无需认证" /></label>
+            <label className="settings-field"><span>API Key · 加密本地保存</span><input type="password" autoComplete="new-password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={credential.apiKeyConfigured ? '已配置；留空则不替换' : '输入 Provider API Key'} /></label>
           </div>
           <div className="settings-field-grid triple">
             <label className="settings-field"><span>Timeout · sec</span><input type="number" min="5" max="600" value={provider.timeoutSeconds} onChange={(event) => update('provider', 'timeoutSeconds', Number(event.target.value))} /></label>
             <label className="settings-field"><span>Temperature</span><input type="number" min="0" max="2" step="0.1" value={provider.temperature} onChange={(event) => update('provider', 'temperature', Number(event.target.value))} /></label>
             <label className="settings-field"><span>Max output</span><input type="number" min="256" value={provider.maxOutputTokens} onChange={(event) => update('provider', 'maxOutputTokens', Number(event.target.value))} /></label>
           </div>
-          <div className="credential-note"><LockKeyhole size={14} /><span>运行服务前设置 <code>{provider.apiKeyEnv || 'NO_API_KEY_REQUIRED'}</code>。密钥不会通过设置 API 返回。</span></div>
+          <div className="credential-note"><LockKeyhole size={14} /><span>密钥使用 AES-256-GCM 加密后存于本机服务端，设置 API 不会返回明文。{credential.apiKeyConfigured ? '当前已配置。' : provider.requiresApiKey ? '当前尚未配置。' : '当前 Provider 不要求 API Key。'}</span></div>
         </div>
 
         <div className="settings-panel">

@@ -1,14 +1,15 @@
+import { loadProviderApiKey } from './provider-secret.js'
+
 const systemPrompt = `You are Vigil's repository deep-dive analyst. Analyze repository changes using only the supplied evidence and code context. Clearly separate facts, inferences, and unknowns. Focus on behavior changes, architecture impact, compatibility risk, performance implications, and concrete follow-up checks. Do not invent benchmark results or unseen code. Return concise Markdown in Simplified Chinese.`
 
-function authorizationHeaders(settings) {
-  const envName = settings.provider.apiKeyEnv
-  const apiKey = envName ? process.env[envName] : ''
-  if (envName && !apiKey) throw new Error(`服务端环境变量 ${envName} 尚未设置`)
+async function authorizationHeaders(settings) {
+  const apiKey = await loadProviderApiKey()
+  if (settings.provider.requiresApiKey && !apiKey) throw new Error('Provider API Key 尚未在本地加密存储中配置')
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
 }
 
-export function ensureProviderCredential(settings) {
-  authorizationHeaders(settings)
+export async function ensureProviderCredential(settings) {
+  await authorizationHeaders(settings)
 }
 
 async function providerFetch(settings, endpoint, init = {}) {
@@ -21,7 +22,7 @@ async function providerFetch(settings, endpoint, init = {}) {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        ...authorizationHeaders(settings),
+        ...(await authorizationHeaders(settings)),
         ...init.headers,
       },
     })

@@ -17,6 +17,17 @@ import { inspectRepositoryAddress, normalizeRepositorySource } from './repositor
 import { loadWatchedRepositories, persistWatchedRepository, updateWatchedRepository } from './repository-store.js'
 import { syncFullRepository } from './repository-sync.js'
 import { collectSystemStatus } from './system-status.js'
+import { saveProviderApiKey } from './provider-secret.js'
+import {
+  authenticate,
+  authenticationStatus,
+  createSession,
+  destroySession,
+  ensureBootstrapAdmin,
+  expiredSessionCookie,
+  requireAuthenticatedAdmin,
+  sessionCookie,
+} from './auth.js'
 
 const app = express()
 const port = Number(process.env.VIGIL_PORT || 8787)
@@ -25,8 +36,40 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 app.disable('x-powered-by')
 app.use(express.json({ limit: '4mb' }))
 
+await ensureBootstrapAdmin()
+
 app.get('/api/health', (_request, response) => {
   response.json({ ok: true, service: 'vigil-api' })
+})
+
+app.get('/api/auth/status', async (request, response, next) => {
+  try {
+    response.json(await authenticationStatus(request))
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/auth/login', async (request, response, next) => {
+  try {
+    const user = await authenticate(String(request.body.username || ''), String(request.body.password || ''))
+    if (!user) return response.status(401).json({ error: '用户名或密码不正确' })
+    response.setHeader('Set-Cookie', sessionCookie(createSession(user)))
+    return response.json({ user: { username: user.username, role: user.role } })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.post('/api/auth/logout', (request, response) => {
+  destroySession(request)
+  response.setHeader('Set-Cookie', expiredSessionCookie())
+  response.status(204).end()
+})
+
+app.use('/api', (request, response, next) => {
+  if (request.path === '/health' || request.path.startsWith('/auth/')) return next()
+  return requireAuthenticatedAdmin(request, response, next)
 })
 
 app.get('/api/system-status', async (_request, response, next) => {
@@ -42,7 +85,7 @@ app.get('/api/system-status', async (_request, response, next) => {
 app.get('/api/settings/analysis', async (_request, response, next) => {
   try {
     const settings = await loadAnalysisSettings()
-    response.json({ settings, credential: providerCredentialStatus(settings) })
+    response.json({ settings, credential: await providerCredentialStatus(settings) })
   } catch (error) {
     next(error)
   }
@@ -51,7 +94,17 @@ app.get('/api/settings/analysis', async (_request, response, next) => {
 app.put('/api/settings/analysis', async (request, response, next) => {
   try {
     const settings = await saveAnalysisSettings(request.body)
-    response.json({ settings, credential: providerCredentialStatus(settings) })
+    response.json({ settings, credential: await providerCredentialStatus(settings) })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.put('/api/settings/provider-key', async (request, response, next) => {
+  try {
+    await saveProviderApiKey(request.body.apiKey)
+    const settings = await loadAnalysisSettings()
+    response.json({ credential: await providerCredentialStatus(settings) })
   } catch (error) {
     next(error)
   }
@@ -184,7 +237,7 @@ app.post('/api/repository-intelligence/summaries', async (request, response, nex
     const snapshot = await collectSourceWindow(settings, source, range)
     let analysis = structuredRepositorySummary(snapshot)
     let analysisError = null
-    if (providerCredentialStatus(settings).apiKeyConfigured) {
+    if ((await providerCredentialStatus(settings)).providerReady) {
       try {
         analysis = await executeRepositorySummary(settings, snapshot)
       } catch (error) {
@@ -259,7 +312,7 @@ app.post('/api/repositories/:owner/:repository/summaries', async (request, respo
     const snapshot = await collectRepositoryWindow(settings, request.params.owner, request.params.repository, range)
     let analysis = structuredRepositorySummary(snapshot)
     let analysisError = null
-    if (providerCredentialStatus(settings).apiKeyConfigured) {
+    if ((await providerCredentialStatus(settings)).providerReady) {
       try {
         analysis = await executeRepositorySummary(settings, snapshot)
       } catch (error) {
@@ -298,7 +351,7 @@ app.post('/api/deep-dives', async (request, response, next) => {
     const binding = settings.digitalHuman.enabled
       ? await digitalHumanAdapter.resolveBinding(settings.digitalHuman.bindingRef)
       : null
-    if (!binding) ensureProviderCredential(settings)
+    if (!binding) await ensureProviderCredential(settings)
     const repositoryContext = request.body.codeContext
       || await prepareRepositoryContext(request.body.change || {}, settings)
     const result = binding

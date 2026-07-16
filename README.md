@@ -30,22 +30,27 @@ This repository contains an interactive frontend plus a small local analysis API
 
 No demo repositories, PRs, users, audit events, quotas, health percentages, signals, topics, or Window reports are bundled. Pages without a real backing pipeline render an explicit empty state. Continuous scheduled ingestion, derived cross-repository signals/topics, Window publishing, PAM/session/RBAC, quotas, and audit persistence remain product boundaries.
 
+## First administrator
+
+Vigil does not allow browser-based first-user setup. Start the service with these two server-side environment variables; the first start creates a persistent scrypt-hashed admin record in `.vigil/users.json`:
+
+```bash
+export VIGIL_ADMIN_USERNAME='vigil-admin'
+export VIGIL_ADMIN_PASSWORD='use-a-unique-password-of-at-least-12-characters'
+npm run dev
+```
+
+All API routes except health and login are protected by the administrator session. For HTTPS deployments also set `VIGIL_SESSION_SECURE=true` so the session cookie is marked Secure. Keep the password only in the service manager or server secret store; it is never returned by the API.
+
 ## Analysis configuration
 
 Open **访问与系统 → 分析引擎** to configure:
 
 - an absolute Workspace directory;
 - OpenAI-compatible `base_url`, model, timeout, and Deep Dive thresholds;
-- the name of the server-side API key environment variable.
+- a Provider API Key entered by an authenticated administrator.
 
-For the default provider:
-
-```bash
-export OPENAI_API_KEY=...
-npm run dev
-```
-
-The key value is never stored in browser state or `analysis.json`. Non-secret settings are written to `.vigil/analysis.json`; the configured Workspace receives `repositories/` and `artifacts/` directories.
+The API key is sent only to the local Vigil API over the authenticated session. It is encrypted with AES-256-GCM before being written to `.vigil/provider-secret.json`; the local encryption key is kept separately in `.vigil/provider-secret.key`, both mode `0600`. The settings API and browser state only receive a configured/not-configured status, never the key value. Non-secret settings are written to `.vigil/analysis.json`; the configured Workspace receives `repositories/` and `artifacts/` directories.
 
 Deep Dive uses GitHub/Gerrit metadata for discovery, then performs a mirror clone/fetch only after a change is selected. Change refs are diffed inside the configured Workspace before the bounded context is sent to the provider.
 

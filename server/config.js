@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-const configDirectory = process.env.VIGIL_CONFIG_DIR || path.join(process.cwd(), '.vigil')
+export const configDirectory = process.env.VIGIL_CONFIG_DIR || path.join(process.cwd(), '.vigil')
 const configPath = path.join(configDirectory, 'analysis.json')
 
 export const defaultAnalysisSettings = {
@@ -21,7 +21,7 @@ export const defaultAnalysisSettings = {
   provider: {
     name: 'OpenAI compatible',
     baseUrl: 'https://api.openai.com/v1',
-    apiKeyEnv: 'OPENAI_API_KEY',
+    requiresApiKey: true,
     model: 'gpt-4.1-mini',
     timeoutSeconds: 120,
     temperature: 0.2,
@@ -79,7 +79,7 @@ export function normalizeAnalysisSettings(input = {}) {
     provider: {
       name: String(provider.name || defaultAnalysisSettings.provider.name).slice(0, 80),
       baseUrl: String(provider.baseUrl || defaultAnalysisSettings.provider.baseUrl).replace(/\/+$/, ''),
-      apiKeyEnv: String(provider.apiKeyEnv ?? defaultAnalysisSettings.provider.apiKeyEnv).trim().slice(0, 120),
+      requiresApiKey: provider.requiresApiKey !== undefined ? provider.requiresApiKey !== false : provider.apiKeyEnv !== '',
       model: String(provider.model || defaultAnalysisSettings.provider.model).trim().slice(0, 160),
       timeoutSeconds: asNumber(provider.timeoutSeconds, 120, 5, 600),
       temperature: asNumber(provider.temperature, 0.2, 0, 2),
@@ -126,10 +126,12 @@ export async function saveAnalysisSettings(settings) {
   return normalized
 }
 
-export function providerCredentialStatus(settings) {
-  const envName = settings.provider.apiKeyEnv
+export async function providerCredentialStatus(settings) {
+  const { providerApiKeyConfigured } = await import('./provider-secret.js')
+  const apiKeyConfigured = await providerApiKeyConfigured()
   return {
-    apiKeyConfigured: envName ? Boolean(process.env[envName]) : true,
-    apiKeyEnv: envName,
+    apiKeyConfigured,
+    requiresApiKey: settings.provider.requiresApiKey,
+    providerReady: !settings.provider.requiresApiKey || apiKeyConfigured,
   }
 }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -13,6 +13,15 @@ import { loadWatchedRepositories, persistWatchedRepository } from '../server/rep
 
 test('parses GitHub and Gerrit repository addresses into a common source shape', () => {
   assert.deepEqual(parseRepositoryAddress('vllm-project/vllm'), {
+    sourceType: 'github',
+    host: 'github.com',
+    project: 'vllm-project/vllm',
+    cloneUrl: 'https://github.com/vllm-project/vllm.git',
+    browseUrl: 'https://github.com/vllm-project/vllm',
+    apiBaseUrl: 'https://api.github.com',
+  })
+
+  assert.deepEqual(parseRepositoryAddress('git@github.com:vllm-project/vllm'), {
     sourceType: 'github',
     host: 'github.com',
     project: 'vllm-project/vllm',
@@ -72,6 +81,37 @@ test('watch repository persistence keeps the selected branch', async () => {
     assert.equal(loaded[0].sourceType, 'gerrit')
     assert.equal(loaded[0].syncMode, 'full')
     assert.equal((await readFile(path.join(directory, 'watchlist.json'), 'utf8')).includes('stable'), true)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('loading a legacy GitHub SSH watch migrates it from Gerrit and persists the correction', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'vigil-watchlist-migration-'))
+  const settings = { workspace: { directory } }
+  const legacy = {
+    sourceType: 'gerrit',
+    host: 'github.com',
+    project: 'vllm-project/vllm',
+    cloneUrl: 'git@github.com:vllm-project/vllm',
+    browseUrl: 'https://github.com/admin/repos/vllm-project/vllm',
+    apiBaseUrl: 'https://github.com',
+    branch: 'main',
+    defaultBranch: 'main',
+    id: 'legacy-gerrit-id',
+    syncMode: 'full',
+  }
+  try {
+    await writeFile(
+      path.join(directory, 'watchlist.json'),
+      `${JSON.stringify({ version: 1, repositories: [legacy] })}\n`,
+    )
+    const [repository] = await loadWatchedRepositories(settings)
+    const saved = JSON.parse(await readFile(path.join(directory, 'watchlist.json'), 'utf8'))
+    assert.equal(repository.sourceType, 'github')
+    assert.equal(repository.apiBaseUrl, 'https://api.github.com')
+    assert.equal(repository.cloneUrl, 'https://github.com/vllm-project/vllm.git')
+    assert.equal(saved.repositories[0].sourceType, 'github')
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
