@@ -31,12 +31,12 @@ function snapshotFor(repository) {
   }
 }
 
-async function withRunner(run) {
+async function withRunner(run, windowSchedule = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'vigil-window-runner-'))
   const settings = {
     workspace: { directory },
     provider: { requiresApiKey: false },
-    windowSchedule: { repositoryConcurrency: 2, maxAttempts: 3 },
+    windowSchedule: { repositoryConcurrency: 2, maxAttempts: 3, ...windowSchedule },
   }
   const store = createWindowStore(settings)
   const events = createWindowEventHub()
@@ -92,4 +92,24 @@ test('a Window fails and schedules a retry when every repository fails', async (
     assert.equal(result.nextRetryAt, '2026-07-16T00:05:00.000Z')
     assert.equal(result.events.at(-1).type, 'window.failed')
   })
+})
+
+test('a failed Window becomes terminal once it reaches its maximum attempts', async () => {
+  await withRunner(async ({ settings, store, events }) => {
+    const runner = createWindowRunner({
+      store,
+      events,
+      now: () => new Date('2026-07-16T00:00:00.000Z'),
+      sync: async () => { throw new Error('sync unavailable') },
+      providerStatus: async () => ({ providerReady: false }),
+      updateRepository: async () => {},
+    })
+    const result = await runner.run(range, settings, [
+      { id: 'bad', project: 'openai/bad', sourceType: 'github', branch: 'main', syncMode: 'full' },
+    ])
+
+    assert.equal(result.status, 'failed')
+    assert.equal(result.nextRetryAt, null)
+    assert.equal(result.events.at(-1).type, 'window.failed')
+  }, { maxAttempts: 1 })
 })

@@ -61,6 +61,20 @@ test('persisted events receive a sequence and omit unrecognized secret fields', 
   })
 })
 
+test('startup recovery returns a stale running Window to the durable queue', async () => {
+  await withWorkspace(async (settings) => {
+    const store = createWindowStore(settings)
+    await store.claim(range, [], new Date('2026-07-16T00:01:00.000Z'))
+    const recovered = await store.recoverStaleRuns(new Date('2026-07-16T00:02:00.000Z'))
+
+    assert.equal(recovered.length, 1)
+    assert.equal(recovered[0].status, 'queued')
+    assert.equal(recovered[0].events.at(-1).type, 'window.recovered')
+    const claimedAgain = await store.claim(range, [], new Date('2026-07-16T00:03:00.000Z'))
+    assert.equal(claimedAgain.attempt, 2)
+  })
+})
+
 test('Window artifacts preserve the aggregate report outside the ledger', async () => {
   await withWorkspace(async (settings) => {
     const record = {
