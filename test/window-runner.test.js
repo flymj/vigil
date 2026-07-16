@@ -79,7 +79,7 @@ test('a Window fails and schedules a retry when every repository fails', async (
       store,
       events,
       now: () => new Date('2026-07-16T00:00:00.000Z'),
-      sync: async () => { throw new Error('sync unavailable') },
+      sync: async () => { throw new Error('sync unavailable Authorization: Bearer secret-token') },
       providerStatus: async () => ({ providerReady: false }),
       updateRepository: async () => {},
     })
@@ -91,6 +91,7 @@ test('a Window fails and schedules a retry when every repository fails', async (
     assert.equal(result.attempt, 1)
     assert.equal(result.nextRetryAt, '2026-07-16T00:05:00.000Z')
     assert.equal(result.events.at(-1).type, 'window.failed')
+    assert.equal(JSON.stringify(result).includes('secret-token'), false)
   })
 })
 

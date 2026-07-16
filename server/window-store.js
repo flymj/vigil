@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
+import { sanitizeWindowRepository, sanitizeWindowText } from './window-safety.js'
 
 let windowMutationQueue = Promise.resolve()
 
@@ -17,13 +18,11 @@ function isoAt(value) {
 }
 
 function safeText(value, maxLength = 600) {
-  if (value === null || value === undefined) return undefined
-  return String(value).trim().slice(0, maxLength)
+  return sanitizeWindowText(value, maxLength)
 }
 
 function safeRepository(repository) {
-  const allowed = ['id', 'name', 'org', 'initial', 'color', 'weight', 'criticalPaths', 'syncMode', 'syncStatus', 'localPath', 'sourceType', 'host', 'project', 'branch', 'defaultBranch', 'cloneUrl', 'browseUrl', 'apiBaseUrl']
-  return Object.fromEntries(allowed.filter((key) => repository[key] !== undefined).map((key) => [key, repository[key]]))
+  return sanitizeWindowRepository(repository)
 }
 
 function normalizeEvent(windowId, event, sequence, at) {

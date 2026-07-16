@@ -44,11 +44,11 @@ test('only one concurrent claim can move one Window into running state', async (
 test('persisted events receive a sequence and omit unrecognized secret fields', async () => {
   await withWorkspace(async (settings) => {
     const store = createWindowStore(settings)
-    await store.claim(range, [], new Date('2026-07-16T00:01:00.000Z'))
+    await store.claim(range, [{ id: 'private', cloneUrl: 'https://alice:secret-password@gerrit.example.test/project', project: 'project' }], new Date('2026-07-16T00:01:00.000Z'))
     const stored = await store.appendEvent(range.id, {
       type: 'repository.collect.failed',
       repository: 'openai/example',
-      message: 'GitHub 403',
+      message: 'GitHub 403 Authorization: Bearer secret-token password=secret-password',
       elapsedMs: 19,
       token: 'must-not-persist',
       authorization: 'must-not-persist',
@@ -57,6 +57,9 @@ test('persisted events receive a sequence and omit unrecognized secret fields', 
     assert.equal(stored.sequence, 2)
     assert.equal('token' in stored, false)
     assert.equal('authorization' in stored, false)
+    assert.equal(stored.message.includes('secret-token'), false)
+    assert.equal(stored.message.includes('secret-password'), false)
+    assert.equal(JSON.stringify(await store.load(range.id)).includes('secret-password'), false)
     assert.deepEqual((await store.load(range.id)).events.map((event) => event.type), ['window.queued', stored.type])
   })
 })

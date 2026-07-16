@@ -5,9 +5,10 @@ import { collectSourceWindow } from './repository-intelligence.js'
 import { updateWatchedRepository } from './repository-store.js'
 import { syncFullRepository } from './repository-sync.js'
 import { persistWindowReport, structuredWindowSummary } from './window-reports.js'
+import { sanitizeWindowText } from './window-safety.js'
 
 function safeError(error) {
-  return String(error?.message || error || 'Unknown error').slice(0, 600)
+  return sanitizeWindowText(error?.message || error || 'Unknown error') || 'Unknown error'
 }
 
 function repositoryLabel(repository) {
