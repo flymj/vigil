@@ -69,6 +69,10 @@ app.post('/api/auth/logout', (request, response) => {
 
 app.use('/api', (request, response, next) => {
   if (request.path === '/health' || request.path.startsWith('/auth/')) return next()
+  // Public visitors can inspect already-persisted repository intelligence. Any
+  // operation that can spend provider/API quota or mutate configuration remains
+  // an administrator action.
+  if (request.method === 'GET' && !request.path.startsWith('/settings/') && request.path !== '/digital-humans') return next()
   return requireAuthenticatedAdmin(request, response, next)
 })
 

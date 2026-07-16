@@ -40,7 +40,7 @@ export VIGIL_ADMIN_PASSWORD='use-a-unique-password-of-at-least-12-characters'
 npm run dev
 ```
 
-All API routes except health and login are protected by the administrator session. For HTTPS deployments also set `VIGIL_SESSION_SECURE=true` so the session cookie is marked Secure. Keep the password only in the service manager or server secret store; it is never returned by the API.
+The public site can read the persisted watchlist, system status, and generated report downloads without login. Administrator login is required for provider/settings access and any operation that adds/syncs repositories or spends collection/provider quota. For HTTPS deployments also set `VIGIL_SESSION_SECURE=true` so the session cookie is marked Secure. Keep the password only in the service manager or server secret store; it is never returned by the API.
 
 ## Analysis configuration
 

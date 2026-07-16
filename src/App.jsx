@@ -121,11 +121,6 @@ function App() {
 
   useEffect(() => {
     let active = true
-    if (!authentication.authenticated) {
-      setRepositories([])
-      setRepositoriesState({ loading: false, error: '' })
-      return () => { active = false }
-    }
     getWatchedRepositories()
       .then(({ repositories: persisted }) => {
         if (!active) return
@@ -182,9 +177,6 @@ function App() {
     setSelectedRepository(repository)
   }
 
-  if (authentication.loading) return <LoginScreen loading />
-  if (!authentication.authenticated) return <LoginScreen setupRequired={authentication.setupRequired} error={authentication.error} onAuthenticated={(user) => setAuthentication({ loading: false, authenticated: true, setupRequired: false, user, error: '' })} />
-
   return (
     <div className="app-shell">
       <Sidebar page={page} navigate={navigate} open={sidebarOpen} repositoryCount={repositories.length} />
@@ -200,24 +192,24 @@ function App() {
           {page === 'overview' && <Overview navigate={navigate} repositories={repositories} repositoriesState={repositoriesState} onOpenRepository={openRepository} />}
           {page === 'signals' && <SignalsView />}
           {page === 'repositories' && (
-            <RepositoriesView repositories={repositories} onAdd={() => setAddRepoOpen(true)} onSelect={openRepository} />
+            <RepositoriesView repositories={repositories} canManage={authentication.authenticated} onAdd={() => setAddRepoOpen(true)} onSelect={openRepository} />
           )}
-          {page === 'repository-detail' && (selectedRepository ? <RepositoryDetail repository={selectedRepository} onBack={() => navigate('repositories')} onRepositoryUpdated={updateRepository} /> : <EmptyState icon={Github} title="未选择观察项目" description="请先从观察项目列表打开一个真实仓库。" action="返回观察项目" onAction={() => navigate('repositories')} />)}
+          {page === 'repository-detail' && (selectedRepository ? <RepositoryDetail repository={selectedRepository} canManage={authentication.authenticated} onBack={() => navigate('repositories')} onRepositoryUpdated={updateRepository} /> : <EmptyState icon={Github} title="未选择观察项目" description="请先从观察项目列表打开一个真实仓库。" action="返回观察项目" onAction={() => navigate('repositories')} />)}
           {page === 'topics' && <TopicsView />}
           {page === 'windows' && <WindowsView />}
-          {page === 'admin' && <AdminView authentication={authentication} />}
+          {page === 'admin' && <AdminView authentication={authentication} onAuthenticated={(user) => setAuthentication({ loading: false, authenticated: true, setupRequired: false, user, error: '' })} />}
         </main>
       </div>
 
       {sidebarOpen && <button className="scrim mobile-scrim" aria-label="关闭导航" onClick={() => setSidebarOpen(false)} />}
       {searchOpen && <CommandPalette onClose={() => setSearchOpen(false)} navigate={navigate} repositories={repositories} onOpenRepository={openRepository} />}
-      {addRepoOpen && <AddRepositoryModal onClose={() => setAddRepoOpen(false)} onAdd={addRepository} />}
+      {addRepoOpen && authentication.authenticated && <AddRepositoryModal onClose={() => setAddRepoOpen(false)} onAdd={addRepository} />}
       {notice && <div className="toast"><FileCheck2 size={17} />{notice}</div>}
     </div>
   )
 }
 
-function LoginScreen({ loading = false, setupRequired = false, error: initialError = '', onAuthenticated }) {
+function LoginScreen({ loading = false, embedded = false, setupRequired = false, error: initialError = '', onAuthenticated }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState(initialError)
@@ -237,7 +229,8 @@ function LoginScreen({ loading = false, setupRequired = false, error: initialErr
     }
   }
 
-  return <main className="login-shell"><section className="login-card"><span className="login-mark"><LockKeyhole size={22} /></span><span>VIGIL / ACCESS CONTROL</span><h1>{loading ? '正在验证访问权限' : setupRequired ? '尚未配置管理员' : '管理员登录'}</h1>{loading ? <p>正在连接本地服务。</p> : setupRequired ? <p>请在服务端设置 <code>VIGIL_ADMIN_USERNAME</code> 与 <code>VIGIL_ADMIN_PASSWORD</code> 后重启 Vigil。首次启动会创建唯一的管理员账户。</p> : <form onSubmit={submit}><label>用户名<input autoFocus autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} /></label><label>密码<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>{error && <p className="field-error">{error}</p>}<button className="primary-button" disabled={submitting}>{submitting ? '正在验证' : '登录'} <ArrowRight size={15} /></button></form>}<small>未认证用户无法读取或修改 Vigil API。</small></section></main>
+  const card = <section className="login-card"><span className="login-mark"><LockKeyhole size={22} /></span><span>VIGIL / ACCESS CONTROL</span><h1>{loading ? '正在验证访问权限' : setupRequired ? '尚未配置管理员' : '管理员登录'}</h1>{loading ? <p>正在连接本地服务。</p> : setupRequired ? <p>请在服务端设置 <code>VIGIL_ADMIN_USERNAME</code> 与 <code>VIGIL_ADMIN_PASSWORD</code> 后重启 Vigil。首次启动会创建唯一的管理员账户。</p> : <form onSubmit={submit}><label>用户名<input autoFocus autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} /></label><label>密码<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>{error && <p className="field-error">{error}</p>}<button className="primary-button" disabled={submitting}>{submitting ? '正在验证' : '登录'} <ArrowRight size={15} /></button></form>}<small>公开页面无需登录；管理员登录后才能更新配置和采集数据。</small></section>
+  return embedded ? <div className="admin-login-shell">{card}</div> : <main className="login-shell">{card}</main>
 }
 
 function Sidebar({ page, navigate, open, repositoryCount }) {
@@ -451,7 +444,7 @@ function SignalsView() {
   )
 }
 
-function RepositoriesView({ repositories, onAdd, onSelect }) {
+function RepositoriesView({ repositories, canManage, onAdd, onSelect }) {
   const [query, setQuery] = useState('')
   const filtered = repositories.filter((repo) => `${repo.host || ''}/${repo.org}/${repo.name}/${repo.branch || ''}`.toLowerCase().includes(query.toLowerCase()))
   return (
@@ -464,7 +457,7 @@ function RepositoriesView({ repositories, onAdd, onSelect }) {
       </div>
       <div className="content-toolbar repo-toolbar">
         <label className="inline-search"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索 host / project / branch" /></label>
-        <div className="toolbar-right"><button className="primary-button" onClick={onAdd}><Plus size={16} /> 添加观察项目</button></div>
+        <div className="toolbar-right">{canManage ? <button className="primary-button" onClick={onAdd}><Plus size={16} /> 添加观察项目</button> : <span className="public-readonly-note"><LockKeyhole size={14} /> 公开只读</span>}</div>
       </div>
       <RepositoryTable rows={filtered} onSelect={onSelect} />
       <div className="table-footnote"><span><span className="idle-dot" /> Watchlist 已持久化到 workspace</span><span>采集仅在用户请求报告、Hot Change 或 Snoop 时执行</span></div>
@@ -582,7 +575,7 @@ function MarkdownReport({ content }) {
   >{content || ''}</ReactMarkdown>
 }
 
-function RepositoryDetail({ repository, onBack, onRepositoryUpdated }) {
+function RepositoryDetail({ repository, canManage, onBack, onRepositoryUpdated }) {
   const [preset, setPreset] = useState('24h')
   const [range, setRange] = useState(() => rangeFromHours(24))
   const [report, setReport] = useState(null)
@@ -668,7 +661,7 @@ function RepositoryDetail({ repository, onBack, onRepositoryUpdated }) {
           {preset === 'custom' && <div className="custom-range"><label>From<input type="datetime-local" value={localInputValue(range.from)} onChange={(event) => setRange((current) => ({ ...current, from: new Date(event.target.value).toISOString() }))} /></label><ArrowRight size={15} /><label>To<input type="datetime-local" value={localInputValue(range.to)} onChange={(event) => setRange((current) => ({ ...current, to: new Date(event.target.value).toISOString() }))} /></label></div>}
           <div className="range-caption"><CalendarRange size={15} /><span>{new Date(range.from).toLocaleString('zh-CN')} — {new Date(range.to).toLocaleString('zh-CN')}</span></div>
         </div>
-        {repository.id && <div className={`local-sync-strip ${localSync.syncStatus || 'on-demand'}`}><GitBranch size={16} /><div><strong>{localSync.syncMode === 'full' ? `FULL LOCAL · ${(localSync.syncStatus || 'pending').toUpperCase()}` : 'ON-DEMAND MIRROR'}</strong><small>{localSync.syncStatus === 'ready' ? localSync.localPath : localSync.syncError || '仅在 Deep Dive 时拉取代码；可切换为完整本地工作副本。'}</small></div><button disabled={localSync.syncStatus === 'syncing'} onClick={syncFull}>{localSync.syncStatus === 'syncing' ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}{localSync.syncMode === 'full' ? '立即同步' : '全仓同步到本地'}</button></div>}
+        {repository.id && <div className={`local-sync-strip ${localSync.syncStatus || 'on-demand'}`}><GitBranch size={16} /><div><strong>{localSync.syncMode === 'full' ? `FULL LOCAL · ${(localSync.syncStatus || 'pending').toUpperCase()}` : 'ON-DEMAND MIRROR'}</strong><small>{localSync.syncStatus === 'ready' ? localSync.localPath : localSync.syncError || '仅在 Deep Dive 时拉取代码；可切换为完整本地工作副本。'}</small></div>{canManage && <button disabled={localSync.syncStatus === 'syncing'} onClick={syncFull}>{localSync.syncStatus === 'syncing' ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}{localSync.syncMode === 'full' ? '立即同步' : '全仓同步到本地'}</button>}</div>}
       </section>
 
       <div className="repository-window-stats">
@@ -680,8 +673,8 @@ function RepositoryDetail({ repository, onBack, onRepositoryUpdated }) {
           <div><span>01 / TIME-RANGE BRIEF</span><h2>这段时间发生了什么</h2><p>完全相同的仓库与时间边界会直接复用已落盘报告。</p></div>
           <div className="repository-section-actions">
             {report && <><a className="secondary-button" href={repositorySummaryDownloadUrl(repository, range, 'markdown')} download>下载 Markdown</a><a className="secondary-button" href={repositorySummaryDownloadUrl(repository, range, 'json')} download>下载 JSON</a></>}
-            {report && <button className="secondary-button" onClick={() => generate(true)}><RefreshCw size={15} /> 重新生成</button>}
-            <button className="primary-button" disabled={summaryState.status === 'loading'} onClick={() => generate(false)}>{summaryState.status === 'loading' ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}{summaryState.status === 'loading' ? '采集与分析中' : '生成时间段总结'}</button>
+            {canManage && report && <button className="secondary-button" onClick={() => generate(true)}><RefreshCw size={15} /> 重新生成</button>}
+            {canManage && <button className="primary-button" disabled={summaryState.status === 'loading'} onClick={() => generate(false)}>{summaryState.status === 'loading' ? <LoaderCircle className="spin" size={16} /> : <Sparkles size={16} />}{summaryState.status === 'loading' ? '采集与分析中' : '生成时间段总结'}</button>}
           </div>
         </div>
         {summaryState.error && <div className="repository-error">{summaryState.error}</div>}
@@ -698,7 +691,7 @@ function RepositoryDetail({ repository, onBack, onRepositoryUpdated }) {
       <section className="section-block hot-pr-section">
         <div className="repository-section-head">
           <div><span>02 / HOT {repository.sourceType === 'gerrit' ? 'CHANGES' : 'PULL REQUESTS'}</span><h2>最新热门 {repository.sourceType === 'gerrit' ? 'Change' : 'PR'}</h2><p>讨论强度 × votes/reactions × diff scope × freshness。</p></div>
-          <button className="secondary-button" disabled={hotState.status === 'loading'} onClick={refreshHot}><RefreshCw className={hotState.status === 'loading' ? 'spin' : ''} size={15} /> {hotState.status === 'loading' ? '收集中' : `收集最新 Hot ${repository.sourceType === 'gerrit' ? 'Change' : 'PR'}`}</button>
+          {canManage && <button className="secondary-button" disabled={hotState.status === 'loading'} onClick={refreshHot}><RefreshCw className={hotState.status === 'loading' ? 'spin' : ''} size={15} /> {hotState.status === 'loading' ? '收集中' : `收集最新 Hot ${repository.sourceType === 'gerrit' ? 'Change' : 'PR'}`}</button>}
         </div>
         <div className="hot-pr-source"><StatusPill status={hotState.status === 'live' ? 'live' : hotState.status === 'error' ? 'failed' : hotState.status === 'loading' ? 'running' : 'idle'} /><span>{hotState.error || (hotState.status === 'live' ? `${repository.sourceType === 'gerrit' ? 'Gerrit' : 'GitHub'} 实时采集结果` : hotState.status === 'loading' ? '正在读取远端数据' : '尚未采集这个时间段的热门变更')}</span></div>
         <div className="hot-pr-list">
@@ -707,7 +700,7 @@ function RepositoryDetail({ repository, onBack, onRepositoryUpdated }) {
               <span className="hot-pr-rank">{String(index + 1).padStart(2, '0')}</span>
               <span className="hot-pr-heat"><Flame size={15} /><strong>{pullRequest.hotScore}</strong><small>HEAT</small></span>
               <div className="hot-pr-copy"><small>#{pullRequest.number} · {pullRequest.author} · {new Date(pullRequest.updatedAt).toLocaleString('zh-CN')}</small><h3>{pullRequest.title}</h3><div><span><MessageSquare size={12} /> {pullRequest.comments}</span><span><Code2 size={12} /> {pullRequest.changedFiles} files</span><span><GitCommit size={12} /> +{pullRequest.additions} −{pullRequest.deletions}</span><RiskLabel risk={pullRequest.hotScore >= 85 ? 'High' : pullRequest.hotScore >= 70 ? 'Med' : 'Low'} /></div></div>
-              <div className="hot-pr-actions"><a href={pullRequest.url} target="_blank" rel="noreferrer" aria-label={`打开 ${repository.sourceType === 'gerrit' ? 'Gerrit Change' : 'GitHub PR'} ${pullRequest.number}`}><ExternalLink size={15} /></a><button onClick={() => openSnoop(pullRequest)}><Eye size={15} /> Snoop</button></div>
+              <div className="hot-pr-actions"><a href={pullRequest.url} target="_blank" rel="noreferrer" aria-label={`打开 ${repository.sourceType === 'gerrit' ? 'Gerrit Change' : 'GitHub PR'} ${pullRequest.number}`}><ExternalLink size={15} /></a>{canManage && <button onClick={() => openSnoop(pullRequest)}><Eye size={15} /> Snoop</button>}</div>
             </article>
           ))}
           {!hotPullRequests.length && <div className="hot-pr-empty"><GitBranch size={20} /><strong>还没有真实采集结果</strong><span>点击右上角按钮，从 {repository.host} 实时采集所选分支。</span></div>}
@@ -756,8 +749,10 @@ function WindowsView() {
   )
 }
 
-function AdminView({ authentication }) {
+function AdminView({ authentication, onAuthenticated }) {
   const [tab, setTab] = useState('analysis')
+  if (authentication.loading) return <div className="admin-section"><EmptyState icon={LoaderCircle} title="正在验证管理员会话" description="公开页面不需要登录；仅管理区需要管理员身份。" spinning /></div>
+  if (!authentication.authenticated) return <LoginScreen embedded setupRequired={authentication.setupRequired} error={authentication.error} onAuthenticated={onAuthenticated} />
   return (
     <div className="page-enter admin-page">
       <div className="security-boundary">

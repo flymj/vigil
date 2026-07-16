@@ -42,6 +42,7 @@
 html { background: var(--ink); scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--paper); }
 .login-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--ink); }
+.admin-login-shell { min-height: 460px; display: grid; place-items: center; padding: 24px; }
 .login-card { width: min(100%, 430px); padding: 32px; display: grid; gap: 15px; color: var(--paper); border: 1px solid #4b5752; background: #202927; box-shadow: 0 25px 80px #00000045; }
 .login-card > span:not(.login-mark), .login-card small { color: var(--acid); font: 600 9px/1 var(--mono); letter-spacing: .14em; }
 .login-card h1 { margin: 3px 0 0; letter-spacing: -.045em; font-size: 29px; }
@@ -52,6 +53,7 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--paper);
 .login-card label { display: grid; gap: 7px; color: #dce6e1; font: 600 10px/1 var(--mono); }
 .login-card input { width: 100%; min-height: 40px; padding: 0 11px; color: var(--paper); border: 1px solid #52635d; background: #17201e; }
 .login-card .primary-button { width: 100%; color: var(--accent-ink); background: var(--acid); border-color: var(--acid); }
+.public-readonly-note { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font: 500 8px/1 var(--mono); }
 button, input, select, textarea { font: inherit; }
 button { color: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
