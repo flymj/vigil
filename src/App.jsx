@@ -7,6 +7,7 @@ import katex from 'katex'
 import 'katex/dist/katex.min.css'
 import {
   Activity,
+  Archive,
   ArrowRight,
   Bell,
   Bot,
@@ -16,6 +17,7 @@ import {
   CircleDot,
   Clock3,
   Code2,
+  Download,
   FileCheck2,
   Filter,
   Flame,
@@ -46,7 +48,7 @@ import {
   ExternalLink,
   X,
 } from 'lucide-react'
-import { addWatchedRepository, generateRepositorySummary, getAnalysisSettings, getAuthenticationStatus, getDigitalHumanAdapterStatus, getHotPullRequests, getSystemStatus, getWatchedRepositories, inspectRepositoryAddress, login, repositorySummaryDownloadUrl, saveAnalysisSettings, saveGitHubApiKey, saveProviderApiKey, snoopPullRequest, syncWatchedRepository, testProvider } from './api'
+import { addWatchedRepository, generateRepositorySummary, getAnalysisSettings, getAuthenticationStatus, getDigitalHumanAdapterStatus, getHotPullRequests, getSystemStatus, getWatchedRepositories, getWindow, getWindows, inspectRepositoryAddress, login, repositorySummaryDownloadUrl, retryWindow, saveAnalysisSettings, saveGitHubApiKey, saveProviderApiKey, snoopPullRequest, subscribeToWindowEvents, syncWatchedRepository, testProvider, windowDownloadUrl } from './api'
 
 const navigation = [
   { id: 'overview', label: '态势总览', icon: LayoutDashboard },
@@ -80,7 +82,7 @@ const pageMeta = {
   repositories: ['观察项目', '监控范围、branch 与代码上下文'],
   'repository-detail': ['仓库情报档案', '时间段总结、Hot PR 与 Snoop'],
   topics: ['技术主题', '等待真实信号生成后聚合'],
-  windows: ['Window 档案', '定时发布器尚未启用'],
+  windows: ['Window 档案', '已归档 Window 与实时执行轨'],
   admin: ['访问与系统', '分析配置与真实运行状态'],
 }
 
@@ -196,7 +198,7 @@ function App() {
           )}
           {page === 'repository-detail' && (selectedRepository ? <RepositoryDetail repository={selectedRepository} canManage={authentication.authenticated} onBack={() => navigate('repositories')} onRepositoryUpdated={updateRepository} /> : <EmptyState icon={Github} title="未选择观察项目" description="请先从观察项目列表打开一个真实仓库。" action="返回观察项目" onAction={() => navigate('repositories')} />)}
           {page === 'topics' && <TopicsView />}
-          {page === 'windows' && <WindowsView />}
+          {page === 'windows' && <WindowsView canManage={authentication.authenticated} />}
           {page === 'admin' && <AdminView authentication={authentication} onAuthenticated={(user) => setAuthentication({ loading: false, authenticated: true, setupRequired: false, user, error: '' })} />}
         </main>
       </div>
@@ -741,12 +743,216 @@ function TopicsView() {
   )
 }
 
-function WindowsView() {
+function mergeWindowEvents(events, incoming) {
+  return [...(events || []).filter((event) => event.sequence !== incoming.sequence), incoming]
+    .sort((left, right) => left.sequence - right.sequence)
+}
+
+function windowStatusFromEvent(event) {
+  const statuses = {
+    'window.published': 'published',
+    'window.degraded': 'degraded',
+    'window.failed': 'failed',
+    'window.started': 'running',
+    'window.queued': 'queued',
+  }
+  return statuses[event.type] || null
+}
+
+function formatWindowTimestamp(value, timezone, options = {}) {
+  if (!value) return '—'
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: timezone || 'Asia/Shanghai',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: options.withSeconds ? '2-digit' : undefined,
+    hour12: false,
+  }).format(new Date(value))
+}
+
+function windowIntervalLabel(record) {
+  return `${formatWindowTimestamp(record.rangeStart, record.timezone)} — ${formatWindowTimestamp(record.rangeEnd, record.timezone)}`
+}
+
+function eventPosition(record, event, instant = Date.now()) {
+  const start = new Date(record.rangeStart).getTime()
+  const end = new Date(record.rangeEnd).getTime()
+  const duration = Math.max(1, end - start)
+  const position = ((new Date(event?.at || instant).getTime() - start) / duration) * 100
+  return Math.min(100, Math.max(0, position))
+}
+
+function eventDescription(event) {
+  const labels = {
+    'window.queued': 'Window 已进入队列',
+    'window.started': 'Window 开始执行',
+    'window.recovered': '检测到中断执行，已恢复到队列',
+    'window.retry.queued': '失败 Window 已重新排队',
+    'window.aggregate.started': '开始汇总跨仓库报告',
+    'window.published': 'Window 已发布',
+    'window.degraded': 'Window 已降级发布',
+    'window.failed': 'Window 执行失败',
+    'repository.sync.started': '开始同步仓库',
+    'repository.sync.succeeded': '仓库同步完成',
+    'repository.sync.failed': '仓库同步失败',
+    'repository.collect.started': '开始采集情报',
+    'repository.collect.succeeded': '仓库采集完成',
+    'repository.collect.failed': '仓库采集失败',
+    'repository.summary.started': '开始生成仓库报告',
+    'repository.summary.succeeded': '仓库报告已持久化',
+    'repository.summary.failed': 'Provider 回退为结构化报告',
+  }
+  return labels[event.type] || event.type
+}
+
+function windowOutcomeCounts(record) {
+  const runs = record.repositoryRuns || []
+  return {
+    total: runs.length || (record.repositories || []).length,
+    succeeded: runs.filter((run) => run.status === 'succeeded').length,
+    failed: runs.filter((run) => run.status === 'failed').length,
+  }
+}
+
+function WindowsView({ canManage }) {
+  const [state, setState] = useState({ loading: true, windows: [], scheduler: null, error: '' })
+  const [selectedId, setSelectedId] = useState(null)
+  const [selectedEvent, setSelectedEvent] = useState(null)
+  const [retrying, setRetrying] = useState(false)
+
+  const refreshArchive = () => {
+    setState((current) => ({ ...current, loading: true, error: '' }))
+    return getWindows()
+      .then((payload) => {
+        const windows = payload.windows || []
+        setState({ loading: false, windows, scheduler: payload.scheduler || null, error: '' })
+        setSelectedId((current) => {
+          if (current && windows.some((window) => window.id === current)) return current
+          return windows.find((window) => ['running', 'queued'].includes(window.status))?.id || windows[0]?.id || null
+        })
+      })
+      .catch((error) => setState((current) => ({ ...current, loading: false, error: error.message })))
+  }
+
+  useEffect(() => {
+    let active = true
+    getWindows()
+      .then((payload) => {
+        if (!active) return
+        const windows = payload.windows || []
+        setState({ loading: false, windows, scheduler: payload.scheduler || null, error: '' })
+        setSelectedId((current) => current && windows.some((window) => window.id === current)
+          ? current
+          : windows.find((window) => ['running', 'queued'].includes(window.status))?.id || windows[0]?.id || null)
+      })
+      .catch((error) => { if (active) setState({ loading: false, windows: [], scheduler: null, error: error.message }) })
+    return () => { active = false }
+  }, [])
+
+  const selected = state.windows.find((window) => window.id === selectedId) || null
+  const selectedIsLive = Boolean(selected && ['queued', 'running'].includes(selected.status))
+
+  useEffect(() => {
+    if (!selectedId) return undefined
+    let active = true
+    getWindow(selectedId)
+      .then(({ window: record }) => {
+        if (!active) return
+        setState((current) => ({ ...current, windows: current.windows.map((window) => window.id === record.id ? record : window) }))
+      })
+      .catch(() => {})
+    return () => { active = false }
+  }, [selectedId])
+
+  useEffect(() => {
+    if (!selectedId || !selectedIsLive) return undefined
+    return subscribeToWindowEvents(selectedId, (event) => {
+      setState((current) => ({
+        ...current,
+        windows: current.windows.map((window) => {
+          if (window.id !== selectedId) return window
+          return {
+            ...window,
+            status: windowStatusFromEvent(event) || window.status,
+            events: mergeWindowEvents(window.events, event),
+          }
+        }),
+      }))
+      if (['window.published', 'window.degraded', 'window.failed'].includes(event.type)) {
+        getWindow(selectedId)
+          .then(({ window: record }) => setState((current) => ({ ...current, windows: current.windows.map((window) => window.id === record.id ? record : window) })))
+          .catch(() => {})
+      }
+    })
+  }, [selectedId, selectedIsLive])
+
+  const retry = async () => {
+    if (!selected || retrying) return
+    setRetrying(true)
+    try {
+      const payload = await retryWindow(selected.id)
+      setState((current) => ({ ...current, windows: current.windows.map((window) => window.id === selected.id ? payload.window : window) }))
+      setSelectedEvent(null)
+      await refreshArchive()
+    } catch (error) {
+      setState((current) => ({ ...current, error: error.message }))
+    } finally {
+      setRetrying(false)
+    }
+  }
+
+  if (state.loading && !state.windows.length) return <div className="page-enter empty-page"><EmptyState icon={LoaderCircle} title="正在读取 Window 档案" description="读取已持久化的时间段报告与实时调度状态。" spinning /></div>
+  if (state.error && !state.windows.length) return <div className="page-enter empty-page"><EmptyState icon={Clock3} title="无法读取 Window 档案" description={state.error} action="重试" onAction={refreshArchive} tone="error" /></div>
+  if (!state.windows.length) {
+    const scheduler = state.scheduler || {}
+    return <div className="page-enter empty-page"><EmptyState icon={Clock3} title="还没有已发布的 Window" description={scheduler.enabled ? `调度已启用，下一次边界为 ${formatWindowTimestamp(scheduler.nextPublishAt, scheduler.timezone)}。完成后会在这里保留真实事件与报告。` : '请在管理员的分析引擎中启用 Window 调度；默认上海时区在 00:00、08:00、16:00 完成并发布。'} /></div>
+  }
+
   return (
-    <div className="page-enter empty-page">
-      <EmptyState icon={Clock3} title="还没有 Window 档案" description="定时采集与 Window 发布器尚未实现。当前可在仓库档案里生成并下载真实的任意时间段报告。" />
+    <div className="page-enter window-page">
+      <header className="window-page-head">
+        <div><span>WINDOW RAIL / DURABLE ARCHIVE</span><h2>从采集到发布，一条可回放的真实轨迹。</h2><p>每个事件均来自 Window ledger；运行中的 Window 通过 SSE 实时落入这条轨道。</p></div>
+        <div className="window-page-actions"><div className={`schedule-chip ${state.scheduler?.enabled ? 'enabled' : ''}`}><Activity size={14} /><span>{state.scheduler?.enabled ? `${state.scheduler.timezone} · ${state.scheduler.publishTimes?.join(' / ')}` : 'SCHEDULE DISABLED'}</span></div><button className="secondary-button" onClick={refreshArchive}><RefreshCw size={15} /> 刷新档案</button></div>
+      </header>
+      {state.error && <div className="window-inline-error">{state.error}</div>}
+      <div className="window-workbench">
+        <WindowArchive windows={state.windows} selectedId={selectedId} onSelect={(id) => { setSelectedId(id); setSelectedEvent(null) }} />
+        {selected && <WindowRail record={selected} canManage={canManage} retrying={retrying} onRetry={retry} onSelectEvent={setSelectedEvent} />}
+      </div>
+      {selectedEvent && selected && <WindowEventDrawer event={selectedEvent} timezone={selected.timezone} onClose={() => setSelectedEvent(null)} />}
     </div>
   )
+}
+
+function WindowArchive({ windows, selectedId, onSelect }) {
+  return <aside className="window-archive" aria-label="Window 档案列表"><div className="window-archive-head"><Archive size={17} /><span>ARCHIVE · {windows.length}</span></div>{windows.map((record) => { const counts = windowOutcomeCounts(record); return <button type="button" key={record.id} className={`window-archive-row ${record.id === selectedId ? 'selected' : ''}`} onClick={() => onSelect(record.id)}><span className="archive-range"><strong>{windowIntervalLabel(record)}</strong><small>{record.timezone} · published slot {record.publishTime}</small></span><span className="archive-outcome"><i>{counts.succeeded}</i> ok <b>{counts.failed}</b> failed</span><StatusPill status={record.status} /><ChevronRight size={16} /></button> })}</aside>
+}
+
+function WindowRail({ record, canManage, retrying, onRetry, onSelectEvent }) {
+  const events = record.events || []
+  const counts = windowOutcomeCounts(record)
+  const nowPosition = eventPosition(record, null)
+  const live = ['queued', 'running'].includes(record.status)
+  return <section className="window-rail-panel">
+    <div className="window-rail-topline"><div><span>WINDOW / {record.id}</span><h2>{windowIntervalLabel(record)}</h2><small>{record.timezone} · half-open interval · {events.length} persisted events</small></div><StatusPill status={record.status} /></div>
+    <div className="window-stat-band"><div><span>REPOSITORIES</span><strong>{counts.total}</strong></div><div><span>SUCCEEDED</span><strong>{counts.succeeded}</strong></div><div className={counts.failed ? 'warning' : ''}><span>FAILED</span><strong>{counts.failed}</strong></div><div><span>ANALYSIS</span><strong>{record.report?.analysis?.mode || 'PENDING'}</strong></div></div>
+    <div className="window-rail-wrap">
+      <div className="rail-time-label rail-start">{formatWindowTimestamp(record.rangeStart, record.timezone)}</div><div className="rail-time-label rail-mid">{formatWindowTimestamp(new Date((new Date(record.rangeStart).getTime() + new Date(record.rangeEnd).getTime()) / 2).toISOString(), record.timezone)}</div><div className="rail-time-label rail-end">{formatWindowTimestamp(record.rangeEnd, record.timezone)}</div>
+      <div className="window-rail-axis" aria-label="Window event timeline">
+        {live && <span className="rail-now" style={{ '--position': `${nowPosition}%` }}><i /><em>NOW</em></span>}
+        {events.map((event) => <button type="button" key={`${event.sequence}-${event.type}`} className={`rail-event ${event.type.includes('failed') ? 'failed' : ''} ${event.type.startsWith('window.') ? 'window-event' : ''}`} style={{ '--position': `${eventPosition(record, event)}%` }} onClick={() => onSelectEvent(event)} aria-label={`${eventDescription(event)}，${formatWindowTimestamp(event.at, record.timezone, { withSeconds: true })}`}><i /><span>{event.sequence}</span></button>)}
+      </div>
+      <p className="rail-caption">{live ? '实时执行中：新事件会在持久化后进入轨道。' : '已归档：轨道按持久化事件的实际发生时间回放。'}</p>
+    </div>
+    <div className="window-event-list">{events.map((event) => <button type="button" key={`${event.sequence}-list`} onClick={() => onSelectEvent(event)} className={event.type.includes('failed') ? 'failed' : ''}><time>{formatWindowTimestamp(event.at, record.timezone, { withSeconds: true })}</time><span>{event.repository || 'WINDOW'}</span><strong>{eventDescription(event)}</strong><ChevronRight size={14} /></button>)}</div>
+    <div className="window-report-zone"><div className="window-report-actions"><div><span>WINDOW REPORT</span><small>{record.report?.generatedAt ? `generated ${formatWindowTimestamp(record.report.generatedAt, record.timezone, { withSeconds: true })}` : '正在等待报告持久化'}</small></div>{record.artifact && <div><a className="secondary-button" href={windowDownloadUrl(record.id, 'markdown')}><Download size={14} /> Markdown</a><a className="secondary-button" href={windowDownloadUrl(record.id, 'json')}><Download size={14} /> JSON</a></div>}</div>{record.report?.analysis?.content ? <div className="window-report-content"><MarkdownReport content={record.report.analysis.content} /></div> : <p className="window-report-pending">汇总报告会在仓库任务全部结束并完成持久化后出现。</p>}{record.status === 'failed' && canManage && <button className="primary-button retry-window-button" onClick={onRetry} disabled={retrying}><RefreshCw size={15} className={retrying ? 'spin' : ''} /> {retrying ? '重新排队中…' : '重试这个 Window'}</button>}</div>
+  </section>
+}
+
+function WindowEventDrawer({ event, timezone, onClose }) {
+  return <div className="window-drawer-layer" role="dialog" aria-modal="true" aria-label="Window 事件详情"><button className="scrim" onClick={onClose} aria-label="关闭事件详情" /><aside className="window-event-drawer"><div className="window-event-drawer-head"><div><span>EVENT #{event.sequence}</span><h2>{eventDescription(event)}</h2></div><button className="icon-button" onClick={onClose}><X size={18} /></button></div><div className="event-detail-grid"><div><span>TIME</span><strong>{formatWindowTimestamp(event.at, timezone, { withSeconds: true })}</strong></div><div><span>STAGE</span><strong>{event.stage || 'window'}</strong></div><div><span>REPOSITORY</span><strong>{event.repository || '—'}</strong></div><div><span>ELAPSED</span><strong>{event.elapsedMs === undefined ? '—' : `${event.elapsedMs} ms`}</strong></div></div>{event.message && <div className="event-detail-message"><span>DETAIL</span><p>{event.message}</p></div>}<div className="event-detail-type"><CircleDot size={15} /><code>{event.type}</code></div></aside></div>
 }
 
 function AdminView({ authentication, onAuthenticated }) {
@@ -783,6 +989,7 @@ const fallbackAnalysisSettings = {
   deepDive: { enabled: true, pullRequests: true, releases: true, criticalPaths: true, attentionThreshold: 80, changedLinesThreshold: 500, maxContextFiles: 24, maxDiffBytes: 2097152 },
   repositoryContext: { strategy: 'git-mirror', fetchOnDeepDive: true },
   digitalHuman: { enabled: false, bindingRef: '', adapter: 'unconfigured' },
+  windowSchedule: { enabled: false, timezone: 'Asia/Shanghai', publishTimes: ['00:00', '08:00', '16:00'], repositoryConcurrency: 3, maxCatchUpWindows: 12, maxAttempts: 3 },
 }
 
 function AnalysisSettings() {
@@ -824,7 +1031,7 @@ function AnalysisSettings() {
       setGithubCredential(githubKeyPayload?.credential || payload.githubCredential)
       setApiKey('')
       setGithubApiKey('')
-      setState({ loading: false, action: '', message: apiKey.trim() || githubApiKey.trim() ? 'Workspace 与加密密钥已保存' : 'Workspace、Provider 与数字人绑定已保存', error: '' })
+      setState({ loading: false, action: '', message: apiKey.trim() || githubApiKey.trim() ? '分析配置与加密密钥已保存' : '分析配置、Window 调度与数字人绑定已保存', error: '' })
     } catch (error) {
       setState({ loading: false, action: '', message: '', error: error.message })
     }
@@ -845,6 +1052,7 @@ function AnalysisSettings() {
   const gerrit = settings.gerrit
   const deepDive = settings.deepDive
   const digitalHuman = settings.digitalHuman
+  const windowSchedule = settings.windowSchedule || fallbackAnalysisSettings.windowSchedule
   return (
     <section className="admin-section analysis-settings">
       <div className="admin-section-head">
@@ -876,6 +1084,12 @@ function AnalysisSettings() {
         <div className="github-config-fields"><input value={gerrit.usernameEnv} onChange={(event) => update('gerrit', 'usernameEnv', event.target.value)} placeholder="GERRIT_USERNAME" /><input value={gerrit.passwordEnv} onChange={(event) => update('gerrit', 'passwordEnv', event.target.value)} placeholder="GERRIT_HTTP_PASSWORD" /><input type="number" min="5" max="120" value={gerrit.requestTimeoutSeconds} onChange={(event) => update('gerrit', 'requestTimeoutSeconds', Number(event.target.value))} aria-label="Gerrit request timeout" /></div>
         <span className="workspace-path-note">公开 Gerrit 无需凭据；私有 Gerrit 使用服务端环境变量，并通过 /a/ REST 认证路径访问</span>
       </div>
+
+      <section className="schedule-settings">
+        <div className="schedule-settings-head"><div><span className="settings-panel-icon acid"><Clock3 size={18} /></span><div><small>WINDOW SCHEDULE</small><h3>跨仓库 Window 发布器</h3><p>仅在已完整结束的时间段运行；服务重启后会补跑未发布的历史 Window。</p></div></div><Toggle checked={windowSchedule.enabled} onChange={(value) => update('windowSchedule', 'enabled', value)} label={windowSchedule.enabled ? '已启用' : '未启用'} /></div>
+        <div className="schedule-settings-grid"><label className="settings-field"><span>IANA timezone</span><input value={windowSchedule.timezone} onChange={(event) => update('windowSchedule', 'timezone', event.target.value)} placeholder="Asia/Shanghai" /></label><label className="settings-field"><span>Publish times · HH:mm</span><input value={windowSchedule.publishTimes.join(', ')} onChange={(event) => update('windowSchedule', 'publishTimes', event.target.value.split(',').map((value) => value.trim()).filter(Boolean))} placeholder="00:00, 08:00, 16:00" /></label><label className="settings-field"><span>Repository concurrency</span><input type="number" min="1" max="8" value={windowSchedule.repositoryConcurrency} onChange={(event) => update('windowSchedule', 'repositoryConcurrency', Number(event.target.value))} /></label><label className="settings-field"><span>Catch-up Windows</span><input type="number" min="1" max="96" value={windowSchedule.maxCatchUpWindows} onChange={(event) => update('windowSchedule', 'maxCatchUpWindows', Number(event.target.value))} /></label><label className="settings-field"><span>Max attempts</span><input type="number" min="1" max="5" value={windowSchedule.maxAttempts} onChange={(event) => update('windowSchedule', 'maxAttempts', Number(event.target.value))} /></label></div>
+        <div className="schedule-settings-note"><Activity size={14} /><span>保存后服务会立即扫描已结束但未发布的 Window。部分仓库失败仍会发布 degraded 报告；全部失败按持久化退避重试。不会提前创建当前未结束的时间段。</span></div>
+      </section>
 
       <div className="settings-columns">
         <div className="settings-panel">
@@ -949,11 +1163,15 @@ function SystemStatus() {
   if (state.error) return <section className="admin-section"><EmptyState icon={Server} title="无法读取系统状态" description={state.error} action="重试" onAction={refresh} tone="error" /></section>
 
   const status = state.status
+  const collectionStatus = status.collection.scheduled ? (status.collection.currentWindow ? 'running' : 'ready') : 'idle'
+  const collectionDetail = status.collection.scheduled
+    ? `${status.collection.timezone} · ${status.collection.publishTimes.join(' / ')} · next ${status.collection.nextPublishAt ? new Date(status.collection.nextPublishAt).toLocaleString('zh-CN', { timeZone: status.collection.timezone }) : '—'}`
+    : 'on demand · scheduled ingestion disabled'
   const services = [
     ['Local API', 'healthy', `checked ${new Date(status.checkedAt).toLocaleString('zh-CN')}`],
     ['Workspace', status.workspace.available ? 'ready' : 'missing', status.workspace.directory],
     ['OpenAI-compatible provider', status.provider.credentialConfigured ? 'ready' : 'missing', `${status.provider.name} · ${status.provider.model}`],
-    ['Repository collection', 'idle', 'on demand · scheduled ingestion disabled'],
+    ['Repository collection', collectionStatus, collectionDetail],
   ]
   return <section className="admin-section"><div className="admin-section-head"><div><h2>系统状态</h2><p>只显示当前 API 实际读取到的本地配置与持久化状态。</p></div><button className="secondary-button" disabled={state.loading} onClick={refresh}><Activity size={16} /> {state.loading ? '刷新中' : '刷新状态'}</button></div><div className="service-grid">{services.map(([name, serviceStatus, detail]) => <div className="service-row" key={name}><span className={`service-light ${serviceStatus}`} /><div><strong>{name}</strong><small>{detail}</small></div><StatusPill status={serviceStatus} /></div>)}</div><div className="system-facts"><div><span>WATCH REPOSITORIES</span><strong>{status.repositories.total}</strong><small>{status.repositories.github} GitHub · {status.repositories.gerrit} Gerrit</small></div><div><span>FULL LOCAL READY</span><strong>{status.repositories.fullSyncReady}</strong><small>{status.repositories.fullSyncFailed} failed</small></div><div><span>GITHUB TOKEN</span><strong>{status.collection.githubTokenConfigured ? 'READY' : 'NOT SET'}</strong><small>公开仓库可不配置</small></div><div><span>GERRIT CREDENTIALS</span><strong>{status.collection.gerritCredentialsConfigured ? 'READY' : 'NOT SET'}</strong><small>公开 Gerrit 可不配置</small></div></div></section>
 }
@@ -963,7 +1181,7 @@ function AuditLog() {
 }
 
 function StatusPill({ status }) {
-  const labelMap = { live: 'LIVE', published: 'PUBLISHED', revised: 'REVISED', active: 'ACTIVE', pending: 'PENDING', healthy: 'HEALTHY', running: 'RUNNING', ready: 'READY', missing: 'NOT READY', configured: 'CONFIGURED', reserved: 'ADAPTER RESERVED', cached: 'CACHE HIT', failed: 'FAILED', idle: 'ON DEMAND' }
+  const labelMap = { live: 'LIVE', published: 'PUBLISHED', degraded: 'DEGRADED', queued: 'QUEUED', revised: 'REVISED', active: 'ACTIVE', pending: 'PENDING', healthy: 'HEALTHY', running: 'RUNNING', ready: 'READY', missing: 'NOT READY', configured: 'CONFIGURED', reserved: 'ADAPTER RESERVED', cached: 'CACHE HIT', failed: 'FAILED', idle: 'ON DEMAND' }
   return <span className={`status-pill ${status}`}><i />{labelMap[status] || status.toUpperCase()}</span>
 }
 

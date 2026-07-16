@@ -139,6 +139,37 @@ export function getSystemStatus() {
   return request('/api/system-status')
 }
 
+export function getWindows() {
+  return request('/api/windows')
+}
+
+export function getWindow(id) {
+  return request(`/api/windows/${encodeURIComponent(id)}`)
+}
+
+export function triggerWindow(rangeEnd) {
+  return request('/api/windows/trigger', {
+    method: 'POST',
+    body: JSON.stringify({ rangeEnd }),
+  })
+}
+
+export function retryWindow(id) {
+  return request(`/api/windows/${encodeURIComponent(id)}/retry`, {
+    method: 'POST',
+  })
+}
+
+export function windowDownloadUrl(id, format = 'markdown') {
+  return `/api/windows/${encodeURIComponent(id)}/download?format=${format === 'json' ? 'json' : 'markdown'}`
+}
+
+export function subscribeToWindowEvents(id, onEvent) {
+  const source = new EventSource(`/api/windows/${encodeURIComponent(id)}/events`)
+  source.addEventListener('window', (event) => onEvent(JSON.parse(event.data)))
+  return () => source.close()
+}
+
 export function addWatchedRepository(source, metadata) {
   return request('/api/watch-repositories', {
     method: 'POST',

@@ -335,7 +335,7 @@ git commit -m "feat: schedule and stream repository windows"
 - Produces `getWindows`, `getWindow`, `windowDownloadUrl`, `triggerWindow`, `retryWindow`, and `subscribeToWindowEvents` API helpers.
 - Produces React components `WindowsView`, `WindowRail`, `WindowArchive`, and `WindowEventDrawer`.
 
-- [ ] **Step 1: Add API functions and a reconnect-safe SSE helper**
+- [x] **Step 1: Add API functions and a reconnect-safe SSE helper**
 
 ```js
 export function getWindows() { return request('/api/windows') }
@@ -351,7 +351,7 @@ export function subscribeToWindowEvents(id, onEvent) {
 
 `WindowsView` loads the archive on mount, selects the running Window first or the latest archive, opens SSE only for a selected `queued`/`running` Window, and merges incoming events by `sequence` to make reconnect replay harmless. Refresh the selected record after every terminal event. Show a real empty state only when the API has no persisted Windows.
 
-- [ ] **Step 2: Replace the empty page with the primary rail and detail drawer**
+- [x] **Step 2: Replace the empty page with the primary rail and detail drawer**
 
 Render archive rows from actual records showing local-time range, `published`/`degraded`/`failed` status, repository success/failure counts, and selection. Render the primary rail as event markers along an interval axis, with the true current time marker only for an active Window. Every marker opens `WindowEventDrawer`, which shows timestamp, stage, repository, elapsed time, safe message, and report link. Do not render invented progress counts or signals.
 
@@ -361,16 +361,16 @@ Add a `Window schedule` panel to `AnalysisSettings` that edits `enabled`, `timez
 
 Update `SystemStatus` to read actual `status.collection`: show enabled/disabled, timezone and slots, next boundary, and live Window state instead of the fixed `on demand · scheduled ingestion disabled` copy.
 
-- [ ] **Step 3: Add responsive styles that preserve the established visual language**
+- [x] **Step 3: Add responsive styles that preserve the established visual language**
 
 Add styles for `.window-shell`, `.window-rail`, `.rail-axis`, `.rail-event`, `.rail-event.failed`, `.rail-now`, `.window-event-drawer`, `.window-summary-grid`, and `.schedule-settings`. Use the current ink/paper/acid variables, minimum 44px interactive targets, keyboard-focus outlines, and an `@media (prefers-reduced-motion: reduce)` block that removes rail fall-in and pulse animation. Reuse existing status-pill styles and add `degraded` as a visible warning state.
 
-- [ ] **Step 4: Build and inspect the production bundle**
+- [x] **Step 4: Build and inspect the production bundle**
 
 Run: `npm run build`  
 Expected: PASS. Existing Vite chunk-size warnings are informational unless a build error is present.
 
-- [ ] **Step 5: Commit the Window Rail UI**
+- [x] **Step 5: Commit the Window Rail UI**
 
 ```bash
 git add src/api.js src/App.jsx src/styles.css
