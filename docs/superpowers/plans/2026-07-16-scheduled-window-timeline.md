@@ -203,7 +203,7 @@ git commit -m "feat: persist window runs and timeline events"
 - Produces `createWindowRunner({ store, events, now, collect, sync, summarize, persistSummary, aggregate })` with `run(range, settings, repositories)`.
 - Produces `executeWindowSummary(settings, input)` returning `{ mode, content, model, usage, latencyMs }`.
 
-- [ ] **Step 1: Write failing runner tests using injected repository adapters**
+- [x] **Step 1: Write failing runner tests using injected repository adapters**
 
 ```js
 test('a Window publishes degraded after one repository fails and one succeeds', async () => {
@@ -226,18 +226,18 @@ test('a Window fails and schedules a retry when every repository fails', async (
 })
 ```
 
-- [ ] **Step 2: Run the runner test to prove the pipeline is absent**
+- [x] **Step 2: Run the runner test to prove the pipeline is absent**
 
 Run: `VIGIL_CONFIG_DIR=$(mktemp -d) node --test test/window-runner.test.js`  
 Expected: FAIL because `createWindowRunner` does not exist.
 
-- [ ] **Step 3: Add bounded provider aggregation and deterministic fallback**
+- [x] **Step 3: Add bounded provider aggregation and deterministic fallback**
 
 Add `executeWindowSummary(settings, input)` in `server/provider.js`. Send the provider only `{ range, timezone, repositories: repositoryRuns.map(({ repository, snapshot, report }) => ({ repository, counts: snapshot.counts, hotPullRequests: snapshot.hotPullRequests.slice(0, 5), analysis: report.analysis.content.slice(0, 6000) })) }`; this bounds prompt size and prevents accidental secret transit.
 
 Add `structuredWindowSummary(window)` in `server/window-reports.js`. It must list the interval, successful/failed repository counts, each successful repository's commit/PR/issue/release counts, and failed repository messages. It uses no provider and always returns `mode: 'structured'`.
 
-- [ ] **Step 4: Implement the runner and passing cases**
+- [x] **Step 4: Implement the runner and passing cases**
 
 `run` must claim before doing network work; return the existing record when no claim is available. Snapshot the input watchlist at claim time. Use a small worker pool whose width is `settings.windowSchedule.repositoryConcurrency`; every repository job emits stage-start and stage-completion/failure events through `store.appendEvent` followed by `events.publish`.
 
@@ -245,7 +245,7 @@ For a full-sync watch call existing `syncFullRepository`; update its local sync 
 
 Use `Promise.allSettled` semantics inside each repository unit so all jobs finish. A run with successes persists an aggregate artifact and finishes `published` or `degraded`; a no-success run finishes `failed` and sets `nextRetryAt` to `now + 5 * 60 * 1000 * 2 ** (attempt - 1)` while attempts remain. Emit the terminal event only after the record and artifact are durable.
 
-- [ ] **Step 5: Run focused and regression tests**
+- [x] **Step 5: Run focused and regression tests**
 
 Run: `VIGIL_CONFIG_DIR=$(mktemp -d) node --test test/window-runner.test.js test/provider.test.js test/reports.test.js`  
 Expected: PASS.
@@ -253,7 +253,7 @@ Expected: PASS.
 Run: `VIGIL_CONFIG_DIR=$(mktemp -d) npm test`  
 Expected: PASS.
 
-- [ ] **Step 6: Commit the execution pipeline**
+- [x] **Step 6: Commit the execution pipeline**
 
 ```bash
 git add server/provider.js server/window-runner.js server/window-reports.js test/window-runner.test.js test/provider.test.js

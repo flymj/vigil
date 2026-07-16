@@ -118,3 +118,51 @@ export async function executeRepositorySummary(settings, snapshot) {
     latencyMs: Math.round(performance.now() - startedAt),
   }
 }
+
+function boundedWindowInput(window) {
+  return {
+    range: {
+      from: window.rangeStart,
+      to: window.rangeEnd,
+      timezone: window.timezone,
+    },
+    repositories: (window.repositoryRuns || []).map((run) => ({
+      repository: run.repository,
+      status: run.status,
+      error: run.status === 'failed' ? String(run.error || '').slice(0, 600) : undefined,
+      counts: run.status === 'succeeded' ? run.snapshot?.counts || run.counts || {} : undefined,
+      hotPullRequests: run.status === 'succeeded' ? (run.snapshot?.hotPullRequests || []).slice(0, 5) : undefined,
+      analysis: run.status === 'succeeded' ? String(run.report?.analysis?.content || '').slice(0, 6000) : undefined,
+    })),
+  }
+}
+
+export async function executeWindowSummary(settings, window) {
+  const prompt = [
+    `请聚合下面 Window 在 ${window.rangeStart} 到 ${window.rangeEnd} 的跨仓库变化。`,
+    '输出：Executive Summary、跨项目主题、需要协调的风险、待跟踪问题。严格基于输入数据，不要编造未给出的证据。',
+    JSON.stringify(boundedWindowInput(window), null, 2),
+  ].join('\n\n')
+  const startedAt = performance.now()
+  const response = await providerFetch(settings, '/chat/completions', {
+    method: 'POST',
+    body: JSON.stringify({
+      model: settings.provider.model,
+      max_tokens: settings.provider.maxOutputTokens,
+      messages: [
+        { role: 'system', content: 'You are Vigil cross-repository intelligence analyst. Return concise Markdown in Simplified Chinese and separate facts from unknowns.' },
+        { role: 'user', content: prompt },
+      ],
+    }),
+  })
+  const payload = await responsePayload(response)
+  const content = payload?.choices?.[0]?.message?.content
+  if (!content) throw new Error('Provider 返回成功，但没有 Window summary 内容')
+  return {
+    mode: 'provider',
+    content,
+    model: payload.model || settings.provider.model,
+    usage: payload.usage || null,
+    latencyMs: Math.round(performance.now() - startedAt),
+  }
+}

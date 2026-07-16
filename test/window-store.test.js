@@ -37,6 +37,7 @@ test('only one concurrent claim can move one Window into running state', async (
     assert.equal(first.attempt, 1)
     assert.equal(second, null)
     assert.deepEqual((await store.load(range.id)).repositories, repositories)
+    assert.deepEqual((await store.load(range.id)).events.map((event) => event.type), ['window.queued'])
   })
 })
 
@@ -53,10 +54,10 @@ test('persisted events receive a sequence and omit unrecognized secret fields', 
       authorization: 'must-not-persist',
     }, new Date('2026-07-16T00:01:01.000Z'))
 
-    assert.equal(stored.sequence, 1)
+    assert.equal(stored.sequence, 2)
     assert.equal('token' in stored, false)
     assert.equal('authorization' in stored, false)
-    assert.deepEqual((await store.load(range.id)).events, [stored])
+    assert.deepEqual((await store.load(range.id)).events.map((event) => event.type), ['window.queued', stored.type])
   })
 })
 

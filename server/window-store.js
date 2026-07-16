@@ -115,6 +115,7 @@ export function createWindowStore(settings) {
         let record = ledger.windows.find((window) => window.id === range.id)
         if (!record) {
           record = createRecord(range, repositories, timestamp)
+          appendRecordEvent(record, { type: 'window.queued', status: 'queued' }, timestamp)
           ledger.windows.push(record)
         }
         const retryDue = record.status === 'failed' && record.nextRetryAt && record.nextRetryAt <= timestamp
