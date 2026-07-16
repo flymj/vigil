@@ -1,6 +1,6 @@
 # Vigil
 
-Vigil is a local Repository Intelligence Monitor for real GitHub and Gerrit repositories. It persists an explicit watchlist and produces on-demand repository reports, Hot Change collections, and Snoop evidence.
+Vigil is a local Repository Intelligence Monitor for real GitHub and Gerrit repositories. It persists an explicit watchlist, produces on-demand repository reports, and can publish scheduled cross-repository Windows with a replayable event timeline.
 
 ## Run locally
 
@@ -26,9 +26,11 @@ This repository contains an interactive frontend plus a small local analysis API
 - GitHub Hot PR and Gerrit Hot Change scoring with evidence-oriented Snoop collection;
 - optional full local clones that preserve the selected branch and support explicit refresh;
 - a status endpoint and UI that report observed local configuration without exposing secrets;
+- a local scheduled Window pipeline with durable run records, Markdown/JSON artifacts, per-repository isolation, retries, and SSE event replay;
+- a Window Rail that shows real pipeline events live and replays the persisted archive after publication;
 - a digital-human adapter boundary without coupling Vigil to Flyclaw's evolving employee contract.
 
-No demo repositories, PRs, users, audit events, quotas, health percentages, signals, topics, or Window reports are bundled. Pages without a real backing pipeline render an explicit empty state. Continuous scheduled ingestion, derived cross-repository signals/topics, Window publishing, PAM/session/RBAC, quotas, and audit persistence remain product boundaries.
+No demo repositories, PRs, users, audit events, quotas, health percentages, signals, topics, or Window reports are bundled. Pages without a real backing pipeline render an explicit empty state. Derived cross-repository signals/topics, PAM/session/RBAC, quotas, and audit persistence remain product boundaries.
 
 ## First administrator
 
@@ -68,6 +70,24 @@ The add flow accepts GitHub `owner/repository`, GitHub HTTPS URLs, Gerrit HTTPS/
 Each watch can remain **On demand** or enable **Full local sync**. Full sync creates a normal, complete Git working copy under `<workspace>/repositories/full/<repository-id>`, checks out the persisted branch, fetches tags and remote refs on subsequent syncs, and records `syncStatus`, `localPath`, `headSha`, and `lastFullSync` in the watchlist. Updates are fast-forward only so Vigil does not discard local changes inside the managed working copy.
 
 Repository summaries are keyed by the exact tuple `source type + host + project + branch + from + to`. The first request writes both JSON evidence and a readable Markdown report under `artifacts/repository-summaries/`; later requests for the same tuple return the cached report unless `force: true` is requested. Both formats are downloadable from the Repository Intelligence page.
+
+## Scheduled Windows and Window Rail
+
+Open **访问与系统 → 分析引擎** and configure **Window Schedule** after adding at least one watch repository. Scheduling is disabled by default. Its default calendar is `Asia/Shanghai` and publishes at `00:00`, `08:00`, and `16:00`; each boundary closes the preceding half-open interval, for example the `08:00` publication covers `[00:00, 08:00)` in that timezone.
+
+You can change the IANA timezone, publication times, repository concurrency, catch-up limit, and maximum attempts. Saving an enabled schedule immediately scans for closed, unpublished Windows. On process restart Vigil recovers stale running records and catches up closed intervals in chronological order; it never creates the current unfinished interval early. This is a local single-process scheduler, so run one Vigil API process for a workspace.
+
+For every Window, Vigil snapshots the watchlist, runs full-sync watches through the existing Git pipeline, collects each source over the exact Window range, and persists repository reports. Repository errors are isolated:
+
+- all repositories succeed → `published`;
+- at least one succeeds and at least one fails → `degraded`, with the failures included in the report;
+- none succeeds → `failed`, with persisted exponential retry state (starting at five minutes).
+
+Every Window is identified by its UTC range and stored in `<workspace>/window-runs.json`. Its readable and machine-readable aggregate artifacts are written to `<workspace>/artifacts/windows/<window-id>/window.md` and `window.json`. The **Window 档案** page replays those persisted events; a running Window receives the same sanitized events via SSE. Event details and reports never include access tokens or provider keys.
+
+The local API also exposes `GET /api/windows`, `GET /api/windows/:id`, replaying `GET /api/windows/:id/events`, downloads at `GET /api/windows/:id/download?format=markdown|json`, plus administrator-only `POST /api/windows/trigger` and `POST /api/windows/:id/retry` operations.
+
+DingTalk delivery is intentionally not included yet. The current implementation produces and archives the Window locally; an outbound robot/webhook delivery layer can be added later without changing the scheduler, ledger, or report contract.
 
 The report reader renders CommonMark/GFM, tables, task lists, standard LaTeX math, and these fenced visual blocks:
 

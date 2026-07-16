@@ -387,11 +387,11 @@ git commit -m "feat: add live window rail interface"
 - Consumes all implementation tasks.
 - Produces a verified localhost run, a user-facing schedule section, and a pushed `main` branch.
 
-- [ ] **Step 1: Document use and operational limits**
+- [x] **Step 1: Document use and operational limits**
 
 Replace the README statement that scheduled Window publishing is only a future boundary with a concise usage section: configure a GitHub/Gerrit watch, set provider credentials if semantic reports are desired, enable the Window schedule in Admin, default publication times, restart catch-up behavior, degraded outcome semantics, the local-single-process limitation, and the explicit absence of DingTalk notifications.
 
-- [ ] **Step 2: Run all automated checks from isolation**
+- [x] **Step 2: Run all automated checks from isolation**
 
 Run: `VIGIL_CONFIG_DIR=$(mktemp -d) npm test`  
 Expected: all test files pass.
@@ -402,7 +402,7 @@ Expected: successful production bundle.
 Run: `git diff --check`  
 Expected: no whitespace errors in staged implementation.
 
-- [ ] **Step 3: Verify the running local service and browser path**
+- [x] **Step 3: Verify the running local service and browser path**
 
 Start or use `VIGIL_PORT=8787 npm run dev:api` and the Vite UI. Authenticate as the local administrator, configure a temporary workspace and a schedule, add a safe public watch, then invoke one closed historical Window through `POST /api/windows/trigger`. Verify:
 
@@ -414,7 +414,7 @@ Start or use `VIGIL_PORT=8787 npm run dev:api` and the Vite UI. Authenticate as 
 
 Use a short historic range and the existing configured public project. If remote collection cannot complete because external credentials or network are unavailable, verify the fully persisted `failed` result, event replay, retry control, and artifacts; this is an expected pipeline outcome, not a substitute for the automated successful/degraded tests.
 
-- [ ] **Step 4: Review completion and commit documentation**
+- [x] **Step 4: Review completion and commit documentation**
 
 Compare implementation against every acceptance criterion in `docs/superpowers/specs/2026-07-16-scheduled-window-timeline-design.md`: default schedule, exact range math, no early Window, catch-up, duplicate prevention, per-repository isolation, degraded publication, durable safe events/artifacts, SSE replay, real UI data, and no DingTalk code. Check every plan task checkbox only after its evidence has passed.
 
