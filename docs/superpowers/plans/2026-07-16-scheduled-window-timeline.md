@@ -274,7 +274,7 @@ git commit -m "feat: publish repository intelligence windows"
 - Produces `createWindowScheduler({ loadSettings, loadRepositories, runner, store, now, timers })` with `start`, `stop`, `scan`, `trigger`, and `status`.
 - Produces REST handlers at `/api/windows`, `/api/windows/:id`, `/api/windows/:id/events`, `/api/windows/:id/download`, `/api/windows/trigger`, and `/api/windows/:id/retry`.
 
-- [ ] **Step 1: Write failing recovery and status tests**
+- [x] **Step 1: Write failing recovery and status tests**
 
 ```js
 test('startup scans closed missed ranges but never creates the current in-progress Window', async () => {
@@ -291,12 +291,12 @@ test('status describes enabled schedule and live Window rather than on-demand co
 })
 ```
 
-- [ ] **Step 2: Run tests to prove scheduler behavior is absent**
+- [x] **Step 2: Run tests to prove scheduler behavior is absent**
 
 Run: `VIGIL_CONFIG_DIR=$(mktemp -d) node --test test/window-scheduler.test.js test/system-status.test.js`  
 Expected: FAIL with module or status contract errors.
 
-- [ ] **Step 3: Implement lifecycle, recovery, and timer behavior**
+- [x] **Step 3: Implement lifecycle, recovery, and timer behavior**
 
 `start` is idempotent. When schedule is disabled it cancels timers and reports no next run. When enabled it calls `store.recoverStaleRuns`, scans closed ranges in ascending order limited by `maxCatchUpWindows`, starts eligible pending/retry runs without awaiting the complete background batch, then arms exactly one timeout for the next boundary. The timeout calls `scan` and re-arms in `finally`. `stop` clears the active timer and prevents future re-arms.
 
@@ -306,7 +306,7 @@ Expected: FAIL with module or status contract errors.
 
 Instantiate a shared store, event hub, runner, and scheduler once in `server/index.js`; call `await scheduler.start()` after bootstrap initialization, and pass `scheduler.status()` into `collectSystemStatus`.
 
-- [ ] **Step 4: Update system status and run tests**
+- [x] **Step 4: Update system status and run tests**
 
 `collectSystemStatus` accepts an optional scheduler state and returns `collection: { mode: settings.windowSchedule.enabled ? 'scheduled' : 'on-demand', scheduled, timezone, publishTimes, nextPublishAt, currentWindow, lastWindow, ...existingCredentials }`. Keep disabled defaults compatible with the current UI.
 
@@ -316,7 +316,7 @@ Expected: PASS.
 Run: `VIGIL_CONFIG_DIR=$(mktemp -d) npm test`  
 Expected: PASS.
 
-- [ ] **Step 5: Commit scheduler and API surface**
+- [x] **Step 5: Commit scheduler and API surface**
 
 ```bash
 git add server/window-scheduler.js server/system-status.js server/index.js test/window-scheduler.test.js test/system-status.test.js

@@ -20,6 +20,11 @@ import { syncFullRepository } from './repository-sync.js'
 import { collectSystemStatus } from './system-status.js'
 import { saveProviderApiKey } from './provider-secret.js'
 import { saveGitHubApiKey } from './github-secret.js'
+import { createWindowEventHub } from './window-events.js'
+import { createWindowRunner } from './window-runner.js'
+import { loadWindowArtifact } from './window-reports.js'
+import { createWindowScheduler } from './window-scheduler.js'
+import { createWindowStore } from './window-store.js'
 import {
   authenticate,
   authenticationStatus,
@@ -39,6 +44,31 @@ app.disable('x-powered-by')
 app.use(express.json({ limit: '4mb' }))
 
 await ensureBootstrapAdmin()
+
+const windowEvents = createWindowEventHub()
+const schedulerStore = {
+  async recoverStaleRuns(now) {
+    return createWindowStore(await loadAnalysisSettings()).recoverStaleRuns(now)
+  },
+  async list() {
+    return createWindowStore(await loadAnalysisSettings()).list()
+  },
+  async retry(id, now) {
+    return createWindowStore(await loadAnalysisSettings()).retry(id, now)
+  },
+}
+const windowScheduler = createWindowScheduler({
+  loadSettings: loadAnalysisSettings,
+  loadRepositories: loadWatchedRepositories,
+  store: schedulerStore,
+  events: windowEvents,
+  runner: {
+    run(range, settings, repositories) {
+      return createWindowRunner({ store: createWindowStore(settings), events: windowEvents }).run(range, settings, repositories)
+    },
+  },
+})
+await windowScheduler.start()
 
 app.get('/api/health', (_request, response) => {
   response.json({ ok: true, service: 'vigil-api' })
@@ -82,9 +112,84 @@ app.get('/api/system-status', async (_request, response, next) => {
   try {
     const settings = await loadAnalysisSettings()
     const repositories = await loadWatchedRepositories(settings)
-    response.json(await collectSystemStatus(settings, repositories))
+    response.json(await collectSystemStatus(settings, repositories, process.env, await windowScheduler.status()))
   } catch (error) {
     next(error)
+  }
+})
+
+app.get('/api/windows', async (_request, response, next) => {
+  try {
+    const settings = await loadAnalysisSettings()
+    response.json({ windows: await createWindowStore(settings).list(), scheduler: await windowScheduler.status() })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/windows/:id/events', async (request, response, next) => {
+  try {
+    const settings = await loadAnalysisSettings()
+    const window = await createWindowStore(settings).load(request.params.id)
+    if (!window) return response.status(404).json({ error: 'Window not found' })
+    response.status(200)
+    response.setHeader('Content-Type', 'text/event-stream')
+    response.setHeader('Cache-Control', 'no-cache')
+    response.setHeader('Connection', 'keep-alive')
+    response.flushHeaders()
+    const writeEvent = (event) => response.write(`event: window\ndata: ${JSON.stringify(event)}\n\n`)
+    for (const event of window.events) writeEvent(event)
+    const unsubscribe = windowEvents.subscribe(window.id, writeEvent)
+    const heartbeat = setInterval(() => response.write(': keep-alive\n\n'), 25000)
+    request.on('close', () => {
+      clearInterval(heartbeat)
+      unsubscribe()
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/windows/:id/download', async (request, response, next) => {
+  try {
+    const settings = await loadAnalysisSettings()
+    const format = request.query.format === 'json' ? 'json' : 'markdown'
+    const artifact = await loadWindowArtifact(settings, request.params.id, format)
+    if (!artifact) return response.status(404).json({ error: 'Window artifact not found' })
+    const safeId = request.params.id.replace(/[^A-Za-z0-9_.-]+/g, '--').slice(0, 180)
+    response.setHeader('Content-Disposition', `attachment; filename="vigil-window-${safeId}.${format === 'json' ? 'json' : 'md'}"`)
+    return response.sendFile(artifact.path)
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.get('/api/windows/:id', async (request, response, next) => {
+  try {
+    const settings = await loadAnalysisSettings()
+    const window = await createWindowStore(settings).load(request.params.id)
+    if (!window) return response.status(404).json({ error: 'Window not found' })
+    return response.json({ window })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.post('/api/windows/trigger', async (request, response, next) => {
+  try {
+    const window = await windowScheduler.trigger({ rangeEnd: request.body.rangeEnd })
+    return response.status(202).json({ accepted: true, window })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.post('/api/windows/:id/retry', async (request, response, next) => {
+  try {
+    const window = await windowScheduler.retry(request.params.id)
+    return response.status(202).json({ accepted: true, window })
+  } catch (error) {
+    return next(error)
   }
 })
 
@@ -100,6 +205,7 @@ app.get('/api/settings/analysis', async (_request, response, next) => {
 app.put('/api/settings/analysis', async (request, response, next) => {
   try {
     const settings = await saveAnalysisSettings(request.body)
+    await windowScheduler.scan()
     response.json({ settings, credential: await providerCredentialStatus(settings), githubCredential: await githubCredentialStatus() })
   } catch (error) {
     next(error)

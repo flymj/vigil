@@ -13,6 +13,7 @@ test('system status reports only observed local configuration and repository sta
     github: {},
     gerrit: { usernameEnv: 'TEST_GERRIT_USER', passwordEnv: 'TEST_GERRIT_PASSWORD' },
     provider: { name: 'Local provider', baseUrl: 'http://127.0.0.1:9000/v1', model: 'test-model', requiresApiKey: true },
+    windowSchedule: { enabled: true, timezone: 'Asia/Shanghai', publishTimes: ['00:00', '08:00', '16:00'] },
   }
   const repositories = [
     { sourceType: 'github', syncMode: 'full', syncStatus: 'ready' },
@@ -22,11 +23,18 @@ test('system status reports only observed local configuration and repository sta
   try {
     const status = await collectSystemStatus(settings, repositories, {
       TEST_GERRIT_USER: 'configured',
+    }, {
+      nextPublishAt: '2026-07-16T08:00:00.000Z',
+      currentRun: { id: 'window-1', status: 'running' },
+      lastWindow: { id: 'window-0', status: 'published' },
     })
     assert.equal(status.workspace.available, true)
     assert.deepEqual(status.repositories, { total: 2, github: 1, gerrit: 1, fullSyncReady: 1, fullSyncFailed: 1 })
-    assert.equal(status.collection.mode, 'on-demand')
-    assert.equal(status.collection.scheduled, false)
+    assert.equal(status.collection.mode, 'scheduled')
+    assert.equal(status.collection.scheduled, true)
+    assert.equal(status.collection.timezone, 'Asia/Shanghai')
+    assert.equal(status.collection.nextPublishAt, '2026-07-16T08:00:00.000Z')
+    assert.equal(status.collection.currentWindow.status, 'running')
     assert.equal(status.collection.githubTokenConfigured, false)
     assert.equal(status.collection.gerritCredentialsConfigured, false)
     assert.equal(status.provider.credentialConfigured, false)

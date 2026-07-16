@@ -1,8 +1,9 @@
 import { access } from 'node:fs/promises'
 import { hasConfiguredAdmin } from './auth.js'
 import { githubCredentialStatus, providerCredentialStatus } from './config.js'
+import { nextPublishAt, normalizeWindowSchedule } from './window-schedule.js'
 
-export async function collectSystemStatus(settings, repositories, environment = process.env) {
+export async function collectSystemStatus(settings, repositories, environment = process.env, scheduler = {}) {
   let workspaceAvailable = false
   try {
     await access(settings.workspace.directory)
@@ -15,6 +16,8 @@ export async function collectSystemStatus(settings, repositories, environment = 
   const gerritUsernameConfigured = Boolean(settings.gerrit.usernameEnv && environment[settings.gerrit.usernameEnv])
   const gerritPasswordConfigured = Boolean(settings.gerrit.passwordEnv && environment[settings.gerrit.passwordEnv])
   const providerCredential = await providerCredentialStatus(settings)
+  const windowSchedule = normalizeWindowSchedule(settings.windowSchedule)
+  const scheduled = windowSchedule.enabled
 
   return {
     checkedAt: new Date().toISOString(),
@@ -31,8 +34,13 @@ export async function collectSystemStatus(settings, repositories, environment = 
       fullSyncFailed: repositories.filter((repository) => repository.syncMode === 'full' && repository.syncStatus === 'failed').length,
     },
     collection: {
-      mode: 'on-demand',
-      scheduled: false,
+      mode: scheduled ? 'scheduled' : 'on-demand',
+      scheduled,
+      timezone: windowSchedule.timezone,
+      publishTimes: windowSchedule.publishTimes,
+      nextPublishAt: scheduled ? scheduler.nextPublishAt || nextPublishAt(windowSchedule) : null,
+      currentWindow: scheduler.currentRun || null,
+      lastWindow: scheduler.lastWindow || null,
       githubTokenConfigured: githubCredential.apiKeyConfigured,
       gerritCredentialsConfigured: gerritUsernameConfigured && gerritPasswordConfigured,
     },
