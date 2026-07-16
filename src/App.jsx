@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
 import {
   Activity,
   ArrowRight,
@@ -486,6 +492,96 @@ function localInputValue(iso) {
   return shifted.toISOString().slice(0, 16)
 }
 
+function MermaidBlock({ source }) {
+  const [state, setState] = useState({ svg: '', error: '' })
+  const id = useRef(`vigil-mermaid-${Math.random().toString(36).slice(2)}`)
+
+  useEffect(() => {
+    let active = true
+    setState({ svg: '', error: '' })
+    void import('mermaid')
+      .then(({ default: mermaid }) => {
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          theme: 'base',
+          themeVariables: {
+            primaryColor: '#dce9e3',
+            primaryBorderColor: '#2f6f5c',
+            primaryTextColor: '#17201e',
+            lineColor: '#63766e',
+            secondaryColor: '#edf3f0',
+            tertiaryColor: '#f3f6f5',
+            fontFamily: 'Manrope, sans-serif',
+          },
+        })
+        return mermaid.render(id.current, source)
+      })
+      .then(({ svg }) => { if (active) setState({ svg, error: '' }) })
+      .catch((error) => { if (active) setState({ svg: '', error: `Mermaid 图表无法渲染：${error.message || error}` }) })
+    return () => { active = false }
+  }, [source])
+
+  if (state.error) return <div className="report-embed-error">{state.error}</div>
+  if (!state.svg) return <div className="report-embed-loading">正在渲染 Mermaid 图…</div>
+  return <div className="report-mermaid" dangerouslySetInnerHTML={{ __html: state.svg }} />
+}
+
+function EChartsBlock({ source }) {
+  const element = useRef(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let chart
+    let observer
+    void import('echarts')
+      .then((echarts) => {
+        const parsed = JSON.parse(source)
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error('ECharts 代码块必须是 option JSON 对象')
+        chart = echarts.init(element.current, undefined, { renderer: 'svg' })
+        chart.setOption({ ...parsed, tooltip: { ...(parsed.tooltip || {}), renderMode: 'richText' } }, true)
+        observer = new ResizeObserver(() => chart?.resize())
+        observer.observe(element.current)
+        setError('')
+      })
+      .catch((renderError) => setError(`ECharts 图表无法渲染：${renderError.message || renderError}`))
+    return () => {
+      observer?.disconnect()
+      chart?.dispose()
+    }
+  }, [source])
+
+  if (error) return <div className="report-embed-error">{error}</div>
+  return <div className="report-echarts" ref={element} aria-label="报告图表" />
+}
+
+function KaTeXBlock({ source }) {
+  try {
+    return <div className="report-katex" dangerouslySetInnerHTML={{ __html: katex.renderToString(source, { displayMode: true, throwOnError: false, trust: false }) }} />
+  } catch (error) {
+    return <div className="report-embed-error">KaTeX 公式无法渲染：{error.message || String(error)}</div>
+  }
+}
+
+function MarkdownReport({ content }) {
+  return <ReactMarkdown
+    remarkPlugins={[remarkGfm, remarkMath]}
+    rehypePlugins={[rehypeKatex]}
+    components={{
+      a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>,
+      pre: ({ children }) => {
+        const code = Array.isArray(children) ? children[0] : children
+        const language = /language-([\w-]+)/.exec(code?.props?.className || '')?.[1]?.toLowerCase()
+        const source = String(code?.props?.children || '').replace(/\n$/, '')
+        if (language === 'mermaid') return <MermaidBlock source={source} />
+        if (language === 'echarts') return <EChartsBlock source={source} />
+        if (language === 'katex' || language === 'tex') return <KaTeXBlock source={source} />
+        return <pre>{children}</pre>
+      },
+    }}
+  >{content || ''}</ReactMarkdown>
+}
+
 function RepositoryDetail({ repository, onBack, onRepositoryUpdated }) {
   const [preset, setPreset] = useState('24h')
   const [range, setRange] = useState(() => rangeFromHours(24))
@@ -592,7 +688,7 @@ function RepositoryDetail({ repository, onBack, onRepositoryUpdated }) {
         {report ? (
           <div className="generated-report">
             <div className="report-provenance"><StatusPill status={report.cacheHit ? 'cached' : 'published'} /><span>artifact: {report.artifactId}</span><span>{report.analysis.mode === 'provider' ? report.analysis.model : 'structured fallback'}</span><time>{new Date(report.generatedAt).toLocaleString('zh-CN')}</time></div>
-            <div className="generated-report-content">{report.analysis.content}</div>
+            <div className="generated-report-content"><MarkdownReport content={report.analysis.content} /></div>
           </div>
         ) : (
           <div className="empty-report-state"><span><CalendarRange size={22} /></span><div><strong>尚未生成这个时间段的报告</strong><p>Vigil 会先查找相同时间键的存盘结果；未命中时才采集 {repository.sourceType === 'gerrit' ? 'Gerrit' : 'GitHub'} 并运行分析。</p></div></div>
@@ -688,7 +784,7 @@ const fallbackAnalysisSettings = {
   workspace: { directory: '.vigil/workspace' },
   github: { apiBaseUrl: 'https://api.github.com', tokenEnv: 'GITHUB_TOKEN', requestTimeoutSeconds: 30 },
   gerrit: { usernameEnv: 'GERRIT_USERNAME', passwordEnv: 'GERRIT_HTTP_PASSWORD', requestTimeoutSeconds: 30 },
-  provider: { name: 'OpenAI compatible', baseUrl: 'https://api.openai.com/v1', requiresApiKey: true, model: 'gpt-4.1-mini', timeoutSeconds: 120, temperature: 0.2, maxOutputTokens: 6000 },
+  provider: { name: 'OpenAI compatible', baseUrl: 'https://api.openai.com/v1', requiresApiKey: true, model: 'gpt-4.1-mini', timeoutSeconds: 120, maxOutputTokens: 6000 },
   deepDive: { enabled: true, pullRequests: true, releases: true, criticalPaths: true, attentionThreshold: 80, changedLinesThreshold: 500, maxContextFiles: 24, maxDiffBytes: 2097152 },
   repositoryContext: { strategy: 'git-mirror', fetchOnDeepDive: true },
   digitalHuman: { enabled: false, bindingRef: '', adapter: 'unconfigured' },
@@ -787,9 +883,8 @@ function AnalysisSettings() {
             <label className="settings-field"><span>Model</span><input value={provider.model} onChange={(event) => update('provider', 'model', event.target.value)} /></label>
             <label className="settings-field"><span>API Key · 加密本地保存</span><input type="password" autoComplete="new-password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={credential.apiKeyConfigured ? '已配置；留空则不替换' : '输入 Provider API Key'} /></label>
           </div>
-          <div className="settings-field-grid triple">
+          <div className="settings-field-grid">
             <label className="settings-field"><span>Timeout · sec</span><input type="number" min="5" max="600" value={provider.timeoutSeconds} onChange={(event) => update('provider', 'timeoutSeconds', Number(event.target.value))} /></label>
-            <label className="settings-field"><span>Temperature</span><input type="number" min="0" max="2" step="0.1" value={provider.temperature} onChange={(event) => update('provider', 'temperature', Number(event.target.value))} /></label>
             <label className="settings-field"><span>Max output</span><input type="number" min="256" value={provider.maxOutputTokens} onChange={(event) => update('provider', 'maxOutputTokens', Number(event.target.value))} /></label>
           </div>
           <div className="credential-note"><LockKeyhole size={14} /><span>密钥使用 AES-256-GCM 加密后存于本机服务端，设置 API 不会返回明文。{credential.apiKeyConfigured ? '当前已配置。' : provider.requiresApiKey ? '当前尚未配置。' : '当前 Provider 不要求 API Key。'}</span></div>

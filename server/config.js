@@ -24,7 +24,6 @@ export const defaultAnalysisSettings = {
     requiresApiKey: true,
     model: 'gpt-4.1-mini',
     timeoutSeconds: 120,
-    temperature: 0.2,
     maxOutputTokens: 6000,
   },
   deepDive: {
@@ -82,7 +81,6 @@ export function normalizeAnalysisSettings(input = {}) {
       requiresApiKey: provider.requiresApiKey !== undefined ? provider.requiresApiKey !== false : provider.apiKeyEnv !== '',
       model: String(provider.model || defaultAnalysisSettings.provider.model).trim().slice(0, 160),
       timeoutSeconds: asNumber(provider.timeoutSeconds, 120, 5, 600),
-      temperature: asNumber(provider.temperature, 0.2, 0, 2),
       maxOutputTokens: asNumber(provider.maxOutputTokens, 6000, 256, 64000),
     },
     deepDive: {

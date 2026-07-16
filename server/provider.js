@@ -1,6 +1,6 @@
 import { loadProviderApiKey } from './provider-secret.js'
 
-const systemPrompt = `You are Vigil's repository deep-dive analyst. Analyze repository changes using only the supplied evidence and code context. Clearly separate facts, inferences, and unknowns. Focus on behavior changes, architecture impact, compatibility risk, performance implications, and concrete follow-up checks. Do not invent benchmark results or unseen code. Return concise Markdown in Simplified Chinese.`
+const systemPrompt = `You are Vigil's repository deep-dive analyst. Analyze repository changes using only the supplied evidence and code context. Clearly separate facts, inferences, and unknowns. Focus on behavior changes, architecture impact, compatibility risk, performance implications, and concrete follow-up checks. Do not invent benchmark results or unseen code. Return concise Markdown in Simplified Chinese. When a visual makes an evidence relationship materially clearer, you may use a fenced mermaid block, a fenced echarts block containing a JSON option object only, or standard LaTex math / a fenced katex block. Do not emit executable JavaScript or HTML.`
 
 async function authorizationHeaders(settings) {
   const apiKey = await loadProviderApiKey()
@@ -69,7 +69,6 @@ export async function executeDeepDive(settings, input, repositoryContext = {}) {
     method: 'POST',
     body: JSON.stringify({
       model: settings.provider.model,
-      temperature: settings.provider.temperature,
       max_tokens: settings.provider.maxOutputTokens,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -93,7 +92,7 @@ export async function executeRepositorySummary(settings, snapshot) {
   const prompt = [
     `请总结仓库 ${snapshot.repository} 在 ${snapshot.range.from} 到 ${snapshot.range.to} 的变化。`,
     '输出：Executive Summary、重要技术变化、Hot PR、兼容/性能风险、仍需跟踪的问题。',
-    '严格基于输入数据；没有 diff 证据时不要推断具体代码行为。',
+    '严格基于输入数据；没有 diff 证据时不要推断具体代码行为。可在确实有助于理解时输出 Mermaid、ECharts JSON option 或 LaTex/KaTeX，绝不输出 HTML 或可执行 JavaScript。',
     JSON.stringify(snapshot, null, 2),
   ].join('\n\n')
   const startedAt = performance.now()
@@ -101,7 +100,6 @@ export async function executeRepositorySummary(settings, snapshot) {
     method: 'POST',
     body: JSON.stringify({
       model: settings.provider.model,
-      temperature: settings.provider.temperature,
       max_tokens: settings.provider.maxOutputTokens,
       messages: [
         { role: 'system', content: 'You are Vigil repository intelligence analyst. Return concise Markdown in Simplified Chinese and separate facts from unknowns.' },

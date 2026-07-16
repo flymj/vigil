@@ -73,6 +73,25 @@ Each watch can remain **On demand** or enable **Full local sync**. Full sync cre
 
 Repository summaries are keyed by the exact tuple `source type + host + project + branch + from + to`. The first request writes both JSON evidence and a readable Markdown report under `artifacts/repository-summaries/`; later requests for the same tuple return the cached report unless `force: true` is requested. Both formats are downloadable from the Repository Intelligence page.
 
+The report reader renders CommonMark/GFM, tables, task lists, standard LaTeX math, and these fenced visual blocks:
+
+````markdown
+```mermaid
+flowchart LR
+  Evidence --> Finding --> FollowUp
+```
+
+```echarts
+{"xAxis":{"type":"category","data":["PR-1","PR-2"]},"yAxis":{"type":"value"},"series":[{"type":"bar","data":[12,27]}]}
+```
+
+```katex
+Risk = \frac{changed\ lines}{review\ coverage}
+```
+````
+
+Mermaid runs in strict security mode, ECharts accepts a JSON option object only, and report Markdown does not render raw HTML or executable JavaScript.
+
 Snoop collects GitHub PR bodies/files/commits/reviews/comments/check runs or Gerrit Change revisions/files/messages/inline comments/labels. Bodies, patches, item counts, and request time are bounded to protect the service.
 
 ## Digital-human adapter
