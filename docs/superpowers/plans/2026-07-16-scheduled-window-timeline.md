@@ -133,7 +133,7 @@ git commit -m "feat: add timezone-aware window schedule"
 - Produces `createWindowEventHub()` with `subscribe(windowId, listener)` and `publish(event)`.
 - Produces `persistWindowReport(settings, record, report)` and `loadWindowArtifact(settings, id, format)`.
 
-- [ ] **Step 1: Write failing ledger, artifact, and event tests**
+- [x] **Step 1: Write failing ledger, artifact, and event tests**
 
 ```js
 test('only one concurrent claim can move one Window into running state', async () => {
@@ -161,12 +161,12 @@ test('a hub subscriber receives newly appended events and can unsubscribe', () =
 })
 ```
 
-- [ ] **Step 2: Run the focused tests to prove store and hub are absent**
+- [x] **Step 2: Run the focused tests to prove store and hub are absent**
 
 Run: `VIGIL_CONFIG_DIR=$(mktemp -d) node --test test/window-store.test.js test/window-events.test.js`  
 Expected: FAIL with module-not-found errors.
 
-- [ ] **Step 3: Implement atomic ledger and report persistence**
+- [x] **Step 3: Implement atomic ledger and report persistence**
 
 Use an internal promise mutation queue plus temp-file-and-rename writes at `<workspace>/window-runs.json`, matching `server/repository-store.js`. Store `{ version: 1, windows: [] }` and keep records newest-first for listing while events remain sequence-ordered inside each record.
 
@@ -176,14 +176,14 @@ Implement safe event normalization to retain only `windowId`, monotonically assi
 
 Write `window.json` and `window.md` at `<workspace>/artifacts/windows/<id>/` with permissions `0600`, and create parent directories at `0700`. The Markdown includes Window range, status, repository outcomes, generated time, analysis mode, and aggregate Markdown. Artifact reads return `null` only for `ENOENT`; all other filesystem errors propagate.
 
-- [ ] **Step 4: Implement the event hub and validate tests**
+- [x] **Step 4: Implement the event hub and validate tests**
 
 Maintain a `Map<windowId, Set<listener>>`. `publish` calls each listener synchronously and catches listener exceptions so one disconnected SSE client cannot affect the runner. `subscribe` returns a stable cleanup function.
 
 Run: `VIGIL_CONFIG_DIR=$(mktemp -d) node --test test/window-store.test.js test/window-events.test.js`  
 Expected: PASS.
 
-- [ ] **Step 5: Commit the durable Window primitives**
+- [x] **Step 5: Commit the durable Window primitives**
 
 ```bash
 git add server/window-store.js server/window-events.js server/window-reports.js test/window-store.test.js test/window-events.test.js
