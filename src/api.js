@@ -1,0 +1,123 @@
+async function request(path, options = {}) {
+  const response = await fetch(path, {
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+    ...options,
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.error || `Request failed with status ${response.status}`)
+  }
+  return payload
+}
+
+export function getAnalysisSettings() {
+  return request('/api/settings/analysis')
+}
+
+export function saveAnalysisSettings(settings) {
+  return request('/api/settings/analysis', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  })
+}
+
+export function testProvider(settings) {
+  return request('/api/providers/test', {
+    method: 'POST',
+    body: JSON.stringify(settings),
+  })
+}
+
+export function getDigitalHumanAdapterStatus() {
+  return request('/api/digital-humans')
+}
+
+export function runDeepDive(signal) {
+  return request('/api/deep-dives', {
+    method: 'POST',
+    body: JSON.stringify({
+      change: {
+        id: signal.id,
+        repository: signal.repo,
+        title: signal.title,
+        summary: signal.summary,
+        facts: signal.facts,
+        current_inference: signal.inference,
+        unknowns: [signal.unknown],
+        attention_score: signal.score,
+        topic: signal.topic,
+        status: signal.status,
+      },
+    }),
+  })
+}
+
+function repositorySource(repository) {
+  const sourceType = repository.sourceType === 'gerrit' ? 'gerrit' : 'github'
+  const project = repository.project || `${repository.org}/${repository.name}`
+  const host = repository.host || (sourceType === 'github' ? 'github.com' : '')
+  return {
+    sourceType,
+    host,
+    project,
+    branch: repository.branch || repository.defaultBranch || 'main',
+    defaultBranch: repository.defaultBranch || repository.branch || 'main',
+    cloneUrl: repository.cloneUrl || (sourceType === 'github' ? `https://github.com/${project}.git` : `https://${host}/${project}`),
+    browseUrl: repository.browseUrl || (sourceType === 'github' ? `https://github.com/${project}` : `https://${host}/admin/repos/${project}`),
+    apiBaseUrl: repository.apiBaseUrl || (sourceType === 'github' ? 'https://api.github.com' : `https://${host}`),
+  }
+}
+
+export function getHotPullRequests(repository, range) {
+  return request('/api/repository-intelligence/hot-changes', {
+    method: 'POST',
+    body: JSON.stringify({ repository: repositorySource(repository), ...range, limit: 10 }),
+  })
+}
+
+export function generateRepositorySummary(repository, range, force = false) {
+  return request('/api/repository-intelligence/summaries', {
+    method: 'POST',
+    body: JSON.stringify({ repository: repositorySource(repository), ...range, force }),
+  })
+}
+
+export function snoopPullRequest(repository, number) {
+  return request('/api/repository-intelligence/snoop', {
+    method: 'POST',
+    body: JSON.stringify({ repository: repositorySource(repository), changeNumber: number }),
+  })
+}
+
+export function repositorySummaryDownloadUrl(repository, range, format = 'markdown') {
+  const query = new URLSearchParams({ ...repositorySource(repository), from: range.from, to: range.to, format })
+  return `/api/repository-intelligence/summaries/download?${query}`
+}
+
+export function inspectRepositoryAddress(address) {
+  return request('/api/repository-sources/inspect', {
+    method: 'POST',
+    body: JSON.stringify({ address }),
+  })
+}
+
+export function getWatchedRepositories() {
+  return request('/api/watch-repositories')
+}
+
+export function getSystemStatus() {
+  return request('/api/system-status')
+}
+
+export function addWatchedRepository(source, metadata) {
+  return request('/api/watch-repositories', {
+    method: 'POST',
+    body: JSON.stringify({ source, metadata }),
+  })
+}
+
+export function syncWatchedRepository(id) {
+  return request(`/api/watch-repositories/${encodeURIComponent(id)}/sync`, {
+    method: 'POST',
+  })
+}
