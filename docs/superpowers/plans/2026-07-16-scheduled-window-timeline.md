@@ -54,7 +54,7 @@
 - Produces `completedWindowRanges(schedule, now): WindowRange[]`, `nextPublishAt(schedule, now): string | null`, and `windowIdForRange(range): string`.
 - Later tasks consume `WindowRange` as `{ id, rangeStart, rangeEnd, timezone, publishTime }` with UTC ISO timestamps.
 
-- [ ] **Step 1: Write the failing schedule and configuration tests**
+- [x] **Step 1: Write the failing schedule and configuration tests**
 
 ```js
 test('default schedule closes the three Shanghai windows with half-open UTC ranges', () => {
@@ -62,11 +62,11 @@ test('default schedule closes the three Shanghai windows with half-open UTC rang
   const now = DateTime.fromISO('2026-07-16T08:01:00', { zone: 'Asia/Shanghai' }).toJSDate()
   const ranges = completedWindowRanges(schedule, now)
   assert.deepEqual(ranges.at(-1), {
-    id: '2026-07-16T00-00-00-000Z__2026-07-16T08-00-00-000Z',
-    rangeStart: '2026-07-16T00:00:00.000Z',
-    rangeEnd: '2026-07-16T08:00:00.000Z',
+    id: '2026-07-15T16-00-00-000Z__2026-07-16T00-00-00-000Z',
+    rangeStart: '2026-07-15T16:00:00.000Z',
+    rangeEnd: '2026-07-16T00:00:00.000Z',
     timezone: 'Asia/Shanghai',
-    publishTime: '16:00',
+    publishTime: '08:00',
   })
 })
 
@@ -76,12 +76,12 @@ test('configuration canonicalizes times and disables scheduling by default', () 
 })
 ```
 
-- [ ] **Step 2: Run the focused tests to prove the contract is missing**
+- [x] **Step 2: Run the focused tests to prove the contract is missing**
 
 Run: `VIGIL_CONFIG_DIR=$(mktemp -d) node --test test/window-schedule.test.js test/config.test.js`  
 Expected: FAIL because `window-schedule.js` and `windowSchedule` do not exist.
 
-- [ ] **Step 3: Install Luxon and implement configuration normalization**
+- [x] **Step 3: Install Luxon and implement configuration normalization**
 
 Run `npm install luxon@^3.7.2`. Preserve the pre-existing unstaged removal of the empty `devDependencies` object by staging only the dependency and lockfile changes introduced for Luxon.
 
@@ -100,9 +100,9 @@ windowSchedule: {
 
 `normalizeWindowSchedule` must use `DateTime.now().setZone(timezone).isValid` to validate an IANA zone; use the default zone if invalid. Parse only exact `HH:mm` strings, fall back to the default schedule if no valid times remain, sort distinct minutes ascending, and clamp numeric fields to `1..8`, `1..96`, and `1..5` respectively. `normalizeAnalysisSettings` calls it with `input.windowSchedule` and `saveAnalysisSettings` returns the normalized value.
 
-Implement `completedWindowRanges` by deriving all publication boundaries from the previous local day through the current local day, retaining boundaries whose instant is `<= now`, then returning ranges between adjacent boundaries. `nextPublishAt` selects the first publication boundary strictly after `now`. Convert every boundary to UTC ISO after derivation, and generate `windowIdForRange` by replacing `:` and `.` with `-` in both timestamps joined by `__`.
+Implement `completedWindowRanges` by deriving enough local calendar days to cover `maxCatchUpWindows`, retaining boundaries whose instant is `<= now`, then returning ranges between adjacent boundaries. `nextPublishAt` selects the first publication boundary strictly after `now`. Convert every boundary to UTC ISO after derivation, and generate `windowIdForRange` by replacing `:` and `.` with `-` in both timestamps joined by `__`.
 
-- [ ] **Step 4: Run focused tests and the current suite**
+- [x] **Step 4: Run focused tests and the current suite**
 
 Run: `VIGIL_CONFIG_DIR=$(mktemp -d) node --test test/window-schedule.test.js test/config.test.js`  
 Expected: PASS.
@@ -110,7 +110,7 @@ Expected: PASS.
 Run: `VIGIL_CONFIG_DIR=$(mktemp -d) npm test`  
 Expected: PASS; existing configuration behavior is retained with scheduling disabled by default.
 
-- [ ] **Step 5: Commit the schedule contract**
+- [x] **Step 5: Commit the schedule contract**
 
 ```bash
 git add package.json server/config.js server/window-schedule.js test/window-schedule.test.js test/config.test.js
@@ -284,7 +284,7 @@ test('startup scans closed missed ranges but never creates the current in-progre
 })
 
 test('status describes enabled schedule and live Window rather than on-demand collection', async () => {
-  const status = await collectSystemStatus(enabledSettings, [], process.env, { nextPublishAt: '2026-07-16T16:00:00.000Z', currentRun: { id: 'window-1', status: 'running' } })
+  const status = await collectSystemStatus(enabledSettings, [], process.env, { nextPublishAt: '2026-07-16T08:00:00.000Z', currentRun: { id: 'window-1', status: 'running' } })
   assert.equal(status.collection.mode, 'scheduled')
   assert.equal(status.collection.scheduled, true)
   assert.equal(status.collection.currentWindow.status, 'running')

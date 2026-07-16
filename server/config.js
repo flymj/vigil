@@ -1,6 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import { defaultWindowSchedule, normalizeWindowSchedule } from './window-schedule.js'
+
 export const configDirectory = process.env.VIGIL_CONFIG_DIR || path.join(process.cwd(), '.vigil')
 const configPath = path.join(configDirectory, 'analysis.json')
 
@@ -44,6 +46,7 @@ export const defaultAnalysisSettings = {
     bindingRef: '',
     adapter: 'unconfigured',
   },
+  windowSchedule: defaultWindowSchedule,
 }
 
 function asNumber(value, fallback, min, max) {
@@ -60,6 +63,7 @@ export function normalizeAnalysisSettings(input = {}) {
   const deepDive = input.deepDive || {}
   const repositoryContext = input.repositoryContext || {}
   const digitalHuman = input.digitalHuman || {}
+  const windowSchedule = input.windowSchedule || {}
   return {
     workspace: {
       directory: path.resolve(String(workspace.directory || defaultAnalysisSettings.workspace.directory)),
@@ -100,6 +104,7 @@ export function normalizeAnalysisSettings(input = {}) {
       bindingRef: String(digitalHuman.bindingRef || '').trim().slice(0, 240),
       adapter: 'unconfigured',
     },
+    windowSchedule: normalizeWindowSchedule(windowSchedule),
   }
 }
 
