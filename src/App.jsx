@@ -46,7 +46,7 @@ import {
   ExternalLink,
   X,
 } from 'lucide-react'
-import { addWatchedRepository, generateRepositorySummary, getAnalysisSettings, getAuthenticationStatus, getDigitalHumanAdapterStatus, getHotPullRequests, getSystemStatus, getWatchedRepositories, inspectRepositoryAddress, login, repositorySummaryDownloadUrl, saveAnalysisSettings, saveProviderApiKey, snoopPullRequest, syncWatchedRepository, testProvider } from './api'
+import { addWatchedRepository, generateRepositorySummary, getAnalysisSettings, getAuthenticationStatus, getDigitalHumanAdapterStatus, getHotPullRequests, getSystemStatus, getWatchedRepositories, inspectRepositoryAddress, login, repositorySummaryDownloadUrl, saveAnalysisSettings, saveGitHubApiKey, saveProviderApiKey, snoopPullRequest, syncWatchedRepository, testProvider } from './api'
 
 const navigation = [
   { id: 'overview', label: '态势总览', icon: LayoutDashboard },
@@ -777,7 +777,7 @@ function AdminView({ authentication, onAuthenticated }) {
 
 const fallbackAnalysisSettings = {
   workspace: { directory: '.vigil/workspace' },
-  github: { apiBaseUrl: 'https://api.github.com', tokenEnv: 'GITHUB_TOKEN', requestTimeoutSeconds: 30 },
+  github: { apiBaseUrl: 'https://api.github.com', requestTimeoutSeconds: 30 },
   gerrit: { usernameEnv: 'GERRIT_USERNAME', passwordEnv: 'GERRIT_HTTP_PASSWORD', requestTimeoutSeconds: 30 },
   provider: { name: 'OpenAI compatible', baseUrl: 'https://api.openai.com/v1', requiresApiKey: true, model: 'gpt-4.1-mini', timeoutSeconds: 120, maxOutputTokens: 6000 },
   deepDive: { enabled: true, pullRequests: true, releases: true, criticalPaths: true, attentionThreshold: 80, changedLinesThreshold: 500, maxContextFiles: 24, maxDiffBytes: 2097152 },
@@ -789,6 +789,8 @@ function AnalysisSettings() {
   const [settings, setSettings] = useState(fallbackAnalysisSettings)
   const [credential, setCredential] = useState({ apiKeyConfigured: false, requiresApiKey: true, providerReady: false })
   const [apiKey, setApiKey] = useState('')
+  const [githubCredential, setGithubCredential] = useState({ apiKeyConfigured: false })
+  const [githubApiKey, setGithubApiKey] = useState('')
   const [adapterStatus, setAdapterStatus] = useState({ status: 'loading', contract: 'pending', digitalHumans: [] })
   const [state, setState] = useState({ loading: true, action: '', message: '', error: '' })
 
@@ -797,6 +799,7 @@ function AnalysisSettings() {
       .then((payload) => {
         setSettings(payload.settings)
         setCredential(payload.credential)
+        setGithubCredential(payload.githubCredential)
         setState({ loading: false, action: '', message: '', error: '' })
         return getDigitalHumanAdapterStatus().then(setAdapterStatus)
       })
@@ -812,11 +815,16 @@ function AnalysisSettings() {
     setState({ loading: false, action: 'save', message: '', error: '' })
     try {
       const payload = await saveAnalysisSettings(settings)
-      const keyPayload = apiKey.trim() ? await saveProviderApiKey(apiKey) : null
+      const [keyPayload, githubKeyPayload] = await Promise.all([
+        apiKey.trim() ? saveProviderApiKey(apiKey) : null,
+        githubApiKey.trim() ? saveGitHubApiKey(githubApiKey) : null,
+      ])
       setSettings(payload.settings)
       setCredential(keyPayload?.credential || payload.credential)
+      setGithubCredential(githubKeyPayload?.credential || payload.githubCredential)
       setApiKey('')
-      setState({ loading: false, action: '', message: apiKey.trim() ? 'Workspace、Provider 与加密 API Key 已保存' : 'Workspace、Provider 与数字人绑定已保存', error: '' })
+      setGithubApiKey('')
+      setState({ loading: false, action: '', message: apiKey.trim() || githubApiKey.trim() ? 'Workspace 与加密密钥已保存' : 'Workspace、Provider 与数字人绑定已保存', error: '' })
     } catch (error) {
       setState({ loading: false, action: '', message: '', error: error.message })
     }
@@ -859,8 +867,8 @@ function AnalysisSettings() {
       <div className="workspace-config-strip github-config-strip">
         <span className="settings-panel-icon"><Github size={18} /></span>
         <div><small>GITHUB COLLECTION</small><strong>Hot PR、Snoop 与时间段事件采集</strong></div>
-        <div className="github-config-fields"><input value={github.apiBaseUrl} onChange={(event) => update('github', 'apiBaseUrl', event.target.value)} placeholder="https://api.github.com" /><input value={github.tokenEnv} onChange={(event) => update('github', 'tokenEnv', event.target.value)} placeholder="GITHUB_TOKEN" /><input type="number" min="5" max="120" value={github.requestTimeoutSeconds} onChange={(event) => update('github', 'requestTimeoutSeconds', Number(event.target.value))} aria-label="GitHub request timeout" /></div>
-        <span className="workspace-path-note">公开仓库可无 Token；配置服务端环境变量可提高 rate limit 并为私有仓库预留认证边界</span>
+        <div className="github-config-fields"><input value={github.apiBaseUrl} onChange={(event) => update('github', 'apiBaseUrl', event.target.value)} placeholder="https://api.github.com" /><input type="password" autoComplete="new-password" value={githubApiKey} onChange={(event) => setGithubApiKey(event.target.value)} placeholder={githubCredential.apiKeyConfigured ? 'GitHub Token 已配置；留空则不替换' : '粘贴 Fine-grained GitHub Token'} /><input type="number" min="5" max="120" value={github.requestTimeoutSeconds} onChange={(event) => update('github', 'requestTimeoutSeconds', Number(event.target.value))} aria-label="GitHub request timeout" /></div>
+        <span className="workspace-path-note"><LockKeyhole size={13} /> Token 仅加密保存在本机 Vigil 服务端，不回传浏览器；公开仓库可留空。{githubCredential.apiKeyConfigured ? '当前已配置。' : '当前尚未配置。'}</span>
       </div>
       <div className="workspace-config-strip github-config-strip">
         <span className="settings-panel-icon"><GitBranch size={18} /></span>

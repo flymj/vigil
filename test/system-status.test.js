@@ -10,7 +10,7 @@ test('system status reports only observed local configuration and repository sta
   const directory = await mkdtemp(path.join(os.tmpdir(), 'vigil-status-'))
   const settings = {
     workspace: { directory },
-    github: { tokenEnv: 'TEST_GITHUB_TOKEN' },
+    github: {},
     gerrit: { usernameEnv: 'TEST_GERRIT_USER', passwordEnv: 'TEST_GERRIT_PASSWORD' },
     provider: { name: 'Local provider', baseUrl: 'http://127.0.0.1:9000/v1', model: 'test-model', requiresApiKey: true },
   }
@@ -21,14 +21,13 @@ test('system status reports only observed local configuration and repository sta
 
   try {
     const status = await collectSystemStatus(settings, repositories, {
-      TEST_GITHUB_TOKEN: 'configured',
       TEST_GERRIT_USER: 'configured',
     })
     assert.equal(status.workspace.available, true)
     assert.deepEqual(status.repositories, { total: 2, github: 1, gerrit: 1, fullSyncReady: 1, fullSyncFailed: 1 })
     assert.equal(status.collection.mode, 'on-demand')
     assert.equal(status.collection.scheduled, false)
-    assert.equal(status.collection.githubTokenConfigured, true)
+    assert.equal(status.collection.githubTokenConfigured, false)
     assert.equal(status.collection.gerritCredentialsConfigured, false)
     assert.equal(status.provider.credentialConfigured, false)
     assert.equal(status.authentication.configured, false)

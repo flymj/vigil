@@ -13,9 +13,9 @@ export function normalizeTimeRange(fromValue, toValue) {
   return { from: from.toISOString(), to: to.toISOString() }
 }
 
-function githubHeaders(settings) {
-  const tokenName = settings.github.tokenEnv
-  const token = tokenName ? process.env[tokenName] : ''
+async function githubHeaders() {
+  const { loadGitHubApiKey } = await import('./github-secret.js')
+  const token = await loadGitHubApiKey()
   return {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
@@ -34,7 +34,7 @@ async function githubFetch(settings, pathname, query = {}, extraHeaders = {}) {
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers: { ...githubHeaders(settings), ...extraHeaders },
+      headers: { ...await githubHeaders(), ...extraHeaders },
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) {

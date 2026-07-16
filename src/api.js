@@ -44,6 +44,13 @@ export function saveProviderApiKey(apiKey) {
   })
 }
 
+export function saveGitHubApiKey(apiKey) {
+  return request('/api/settings/github-key', {
+    method: 'PUT',
+    body: JSON.stringify({ apiKey }),
+  })
+}
+
 export function testProvider(settings) {
   return request('/api/providers/test', {
     method: 'POST',

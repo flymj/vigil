@@ -14,7 +14,7 @@ async function exists(target) {
   }
 }
 
-function gitEnvironment(settings, source) {
+async function gitEnvironment(settings, source) {
   const environment = {
     ...process.env,
     GIT_TERMINAL_PROMPT: '0',
@@ -31,7 +31,8 @@ function gitEnvironment(settings, source) {
       environment[`GIT_CONFIG_VALUE_${configIndex}`] = `Authorization: Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
     }
   } else {
-    const token = settings.github?.tokenEnv ? process.env[settings.github.tokenEnv] : ''
+    const { loadGitHubApiKey } = await import('./github-secret.js')
+    const token = await loadGitHubApiKey()
     if (token) {
       environment.GIT_CONFIG_COUNT = String(configIndex + 1)
       environment[`GIT_CONFIG_KEY_${configIndex}`] = 'http.https://github.com/.extraHeader'
@@ -45,7 +46,7 @@ async function git(args, settings, source, timeout = 20 * 60 * 1000) {
   const result = await execFileAsync('git', args, {
     timeout,
     maxBuffer: 16 * 1024 * 1024,
-    env: gitEnvironment(settings, source),
+    env: await gitEnvironment(settings, source),
   })
   return result.stdout.trim()
 }

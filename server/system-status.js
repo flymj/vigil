@@ -1,10 +1,6 @@
 import { access } from 'node:fs/promises'
 import { hasConfiguredAdmin } from './auth.js'
-import { providerCredentialStatus } from './config.js'
-
-function environmentConfigured(name, environment) {
-  return Boolean(name && environment[name])
-}
+import { githubCredentialStatus, providerCredentialStatus } from './config.js'
 
 export async function collectSystemStatus(settings, repositories, environment = process.env) {
   let workspaceAvailable = false
@@ -15,9 +11,9 @@ export async function collectSystemStatus(settings, repositories, environment = 
     workspaceAvailable = false
   }
 
-  const githubTokenConfigured = environmentConfigured(settings.github.tokenEnv, environment)
-  const gerritUsernameConfigured = environmentConfigured(settings.gerrit.usernameEnv, environment)
-  const gerritPasswordConfigured = environmentConfigured(settings.gerrit.passwordEnv, environment)
+  const githubCredential = await githubCredentialStatus()
+  const gerritUsernameConfigured = Boolean(settings.gerrit.usernameEnv && environment[settings.gerrit.usernameEnv])
+  const gerritPasswordConfigured = Boolean(settings.gerrit.passwordEnv && environment[settings.gerrit.passwordEnv])
   const providerCredential = await providerCredentialStatus(settings)
 
   return {
@@ -37,7 +33,7 @@ export async function collectSystemStatus(settings, repositories, environment = 
     collection: {
       mode: 'on-demand',
       scheduled: false,
-      githubTokenConfigured,
+      githubTokenConfigured: githubCredential.apiKeyConfigured,
       gerritCredentialsConfigured: gerritUsernameConfigured && gerritPasswordConfigured,
     },
     provider: {

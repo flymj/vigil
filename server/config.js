@@ -10,7 +10,6 @@ export const defaultAnalysisSettings = {
   },
   github: {
     apiBaseUrl: 'https://api.github.com',
-    tokenEnv: 'GITHUB_TOKEN',
     requestTimeoutSeconds: 30,
   },
   gerrit: {
@@ -67,7 +66,6 @@ export function normalizeAnalysisSettings(input = {}) {
     },
     github: {
       apiBaseUrl: String(github.apiBaseUrl || defaultAnalysisSettings.github.apiBaseUrl).replace(/\/+$/, ''),
-      tokenEnv: String(github.tokenEnv ?? defaultAnalysisSettings.github.tokenEnv).trim().slice(0, 120),
       requestTimeoutSeconds: asNumber(github.requestTimeoutSeconds, 30, 5, 120),
     },
     gerrit: {
@@ -132,4 +130,9 @@ export async function providerCredentialStatus(settings) {
     requiresApiKey: settings.provider.requiresApiKey,
     providerReady: !settings.provider.requiresApiKey || apiKeyConfigured,
   }
+}
+
+export async function githubCredentialStatus() {
+  const { githubApiKeyConfigured } = await import('./github-secret.js')
+  return { apiKeyConfigured: await githubApiKeyConfigured() }
 }

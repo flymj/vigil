@@ -211,7 +211,8 @@ export async function inspectRepositoryAddress(address, settings = {}) {
       credentialEnvironment[`GIT_CONFIG_VALUE_${configIndex}`] = `Authorization: Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
     }
   } else {
-    const token = settings.github?.tokenEnv ? process.env[settings.github.tokenEnv] : ''
+    const { loadGitHubApiKey } = await import('./github-secret.js')
+    const token = await loadGitHubApiKey()
     if (token) {
       credentialEnvironment.GIT_CONFIG_COUNT = String(configIndex + 1)
       credentialEnvironment[`GIT_CONFIG_KEY_${configIndex}`] = 'http.https://github.com/.extraHeader'

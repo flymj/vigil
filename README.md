@@ -50,15 +50,11 @@ Open **访问与系统 → 分析引擎** to configure:
 - OpenAI-compatible `base_url`, model, timeout, and Deep Dive thresholds;
 - a Provider API Key entered by an authenticated administrator.
 
-The API key is sent only to the local Vigil API over the authenticated session. It is encrypted with AES-256-GCM before being written to `.vigil/provider-secret.json`; the local encryption key is kept separately in `.vigil/provider-secret.key`, both mode `0600`. The settings API and browser state only receive a configured/not-configured status, never the key value. Non-secret settings are written to `.vigil/analysis.json`; the configured Workspace receives `repositories/` and `artifacts/` directories.
+Provider API keys and GitHub Tokens are sent only to the local Vigil API over the authenticated session. Each is encrypted with AES-256-GCM before being written to `.vigil/*-secret.json`; its local encryption key is kept separately in `.vigil/*-secret.key`, both mode `0600`. The settings API and browser state only receive a configured/not-configured status, never the key value. Non-secret settings are written to `.vigil/analysis.json`; the configured Workspace receives `repositories/` and `artifacts/` directories.
 
 Deep Dive uses GitHub/Gerrit metadata for discovery, then performs a mirror clone/fetch only after a change is selected. Change refs are diffed inside the configured Workspace before the bounded context is sent to the provider.
 
-For higher GitHub API limits, set the environment variable configured under **GitHub Collection**:
-
-```bash
-export GITHUB_TOKEN=...
-```
+For higher GitHub API limits and private repository access, paste a fine-grained GitHub Token into **GitHub Collection** and save. It is not read from an environment variable and is never displayed after saving.
 
 For an authenticated Gerrit server, configure the environment-variable names under **Gerrit Collection**, then provide the corresponding values before startup:
 

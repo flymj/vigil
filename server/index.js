@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   loadAnalysisSettings,
+  githubCredentialStatus,
   normalizeAnalysisSettings,
   providerCredentialStatus,
   saveAnalysisSettings,
@@ -18,6 +19,7 @@ import { loadWatchedRepositories, persistWatchedRepository, updateWatchedReposit
 import { syncFullRepository } from './repository-sync.js'
 import { collectSystemStatus } from './system-status.js'
 import { saveProviderApiKey } from './provider-secret.js'
+import { saveGitHubApiKey } from './github-secret.js'
 import {
   authenticate,
   authenticationStatus,
@@ -89,7 +91,7 @@ app.get('/api/system-status', async (_request, response, next) => {
 app.get('/api/settings/analysis', async (_request, response, next) => {
   try {
     const settings = await loadAnalysisSettings()
-    response.json({ settings, credential: await providerCredentialStatus(settings) })
+    response.json({ settings, credential: await providerCredentialStatus(settings), githubCredential: await githubCredentialStatus() })
   } catch (error) {
     next(error)
   }
@@ -98,7 +100,7 @@ app.get('/api/settings/analysis', async (_request, response, next) => {
 app.put('/api/settings/analysis', async (request, response, next) => {
   try {
     const settings = await saveAnalysisSettings(request.body)
-    response.json({ settings, credential: await providerCredentialStatus(settings) })
+    response.json({ settings, credential: await providerCredentialStatus(settings), githubCredential: await githubCredentialStatus() })
   } catch (error) {
     next(error)
   }
@@ -109,6 +111,14 @@ app.put('/api/settings/provider-key', async (request, response, next) => {
     await saveProviderApiKey(request.body.apiKey)
     const settings = await loadAnalysisSettings()
     response.json({ credential: await providerCredentialStatus(settings) })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.put('/api/settings/github-key', async (request, response, next) => {
+  try {
+    response.json({ credential: await saveGitHubApiKey(request.body.apiKey) })
   } catch (error) {
     next(error)
   }
