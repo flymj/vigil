@@ -112,6 +112,16 @@ export function generateRepositorySummary(repository, range, force = false) {
   })
 }
 
+export function checkCachedSummary(repository, range) {
+  return request('/api/repository-intelligence/summaries', {
+    method: 'POST',
+    body: JSON.stringify({ repository: repositorySource(repository), ...range, cacheOnly: true }),
+  }).catch((error) => {
+    if (error.message === 'Request failed with status 404') return null
+    throw error
+  })
+}
+
 export function snoopPullRequest(repository, number) {
   return request('/api/repository-intelligence/snoop', {
     method: 'POST',

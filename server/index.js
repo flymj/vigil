@@ -353,6 +353,7 @@ app.post('/api/repository-intelligence/summaries', async (request, response, nex
     if (!request.body.force) {
       const cached = await loadRepositorySummary(settings, reportKey, range)
       if (cached) return response.json({ ...cached.report, artifactId: cached.artifactId, cacheHit: true })
+      if (request.body.cacheOnly) return response.status(404).json({ cacheMiss: true })
     }
     const snapshot = await collectSourceWindow(settings, source, range)
     let analysis = structuredRepositorySummary(snapshot)

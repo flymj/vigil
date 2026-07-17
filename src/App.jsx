@@ -48,7 +48,7 @@ import {
   ExternalLink,
   X,
 } from 'lucide-react'
-import { addWatchedRepository, generateRepositorySummary, getAnalysisSettings, getAuthenticationStatus, getDigitalHumanAdapterStatus, getHotPullRequests, getSystemStatus, getWatchedRepositories, getWindow, getWindows, inspectRepositoryAddress, login, repositorySummaryDownloadUrl, retryWindow, saveAnalysisSettings, saveGitHubApiKey, saveProviderApiKey, snoopPullRequest, subscribeToWindowEvents, syncWatchedRepository, testProvider, windowDownloadUrl } from './api'
+import { addWatchedRepository, checkCachedSummary, generateRepositorySummary, getAnalysisSettings, getAuthenticationStatus, getDigitalHumanAdapterStatus, getHotPullRequests, getSystemStatus, getWatchedRepositories, getWindow, getWindows, inspectRepositoryAddress, login, repositorySummaryDownloadUrl, retryWindow, saveAnalysisSettings, saveGitHubApiKey, saveProviderApiKey, snoopPullRequest, subscribeToWindowEvents, syncWatchedRepository, testProvider, windowDownloadUrl } from './api'
 
 const navigation = [
   { id: 'overview', label: '态势总览', icon: LayoutDashboard },
@@ -598,6 +598,27 @@ function RepositoryDetail({ repository, canManage, onBack, onRepositoryUpdated }
     setLocalSync(repository)
   }, [repository])
 
+  useEffect(() => {
+    let aborted = false
+    if (!repository.id) return
+    setSummaryState({ status: 'loading', error: '' })
+    checkCachedSummary(repository, range).then((cached) => {
+      if (aborted) return
+      if (cached) {
+        setReport(cached)
+        setHotPullRequests(cached.snapshot.hotPullRequests)
+        setHotState({ status: 'live', error: '' })
+        setSummaryState({ status: 'success', error: '' })
+      } else {
+        setSummaryState({ status: 'idle', error: '' })
+      }
+    }).catch((error) => {
+      if (aborted) return
+      setSummaryState({ status: 'idle', error: error.message })
+    })
+    return () => { aborted = true }
+  }, [repository.id, range.from, range.to])
+
   const syncFull = async () => {
     if (!repository.id) return
     setLocalSync((current) => ({ ...current, syncMode: 'full', syncStatus: 'syncing', syncError: '' }))
@@ -614,7 +635,6 @@ function RepositoryDetail({ repository, canManage, onBack, onRepositoryUpdated }
     setPreset(item.id)
     if (item.hours) setRange(rangeFromHours(item.hours))
     setReport(null)
-    setSummaryState({ status: 'idle', error: '' })
   }
 
   const generate = async (force = false) => {
