@@ -21,6 +21,7 @@ async function gitEnvironment(settings, source) {
     ...process.env,
     GIT_TERMINAL_PROMPT: '0',
     GIT_SSH_COMMAND: 'ssh -o BatchMode=yes',
+    GIT_LFS_SKIP_SMUDGE: '1',
   }
   const inheritedConfigCount = Number(process.env.GIT_CONFIG_COUNT)
   const configIndex = Number.isInteger(inheritedConfigCount) && inheritedConfigCount >= 0 ? inheritedConfigCount : 0
