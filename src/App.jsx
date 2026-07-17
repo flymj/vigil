@@ -476,8 +476,11 @@ const repositoryRangePresets = [
 ]
 
 function rangeFromHours(hours) {
-  const to = new Date()
-  const from = new Date(to.getTime() - hours * 60 * 60 * 1000)
+  const now = Date.now()
+  const gridSizeMs = hours * 60 * 60 * 1000
+  const boundaryMs = Math.floor(now / gridSizeMs) * gridSizeMs
+  const to = new Date(boundaryMs + gridSizeMs)
+  const from = new Date(boundaryMs)
   return { from: from.toISOString(), to: to.toISOString() }
 }
 
