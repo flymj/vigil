@@ -192,3 +192,9 @@ export function syncWatchedRepository(id) {
     method: 'POST',
   })
 }
+
+export function deleteWatchedRepository(id) {
+  return request(`/api/watch-repositories/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}

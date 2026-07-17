@@ -15,7 +15,7 @@ import { ensureProviderCredential, executeDeepDive, executeRepositorySummary, te
 import { loadRepositorySummary, persistRepositorySummary, structuredRepositorySummary } from './reports.js'
 import { collectHotChanges, collectSourceWindow, repositoryReportKey, snoopChange } from './repository-intelligence.js'
 import { inspectRepositoryAddress, normalizeRepositorySource } from './repository-source.js'
-import { loadWatchedRepositories, persistWatchedRepository, updateWatchedRepository } from './repository-store.js'
+import { deleteWatchedRepository, loadWatchedRepositories, persistWatchedRepository, updateWatchedRepository } from './repository-store.js'
 import { syncFullRepository } from './repository-sync.js'
 import { collectSystemStatus } from './system-status.js'
 import { saveProviderApiKey } from './provider-secret.js'
@@ -319,6 +319,16 @@ app.post('/api/watch-repositories/:id/sync', async (request, response, next) => 
     }
   } catch (error) {
     return next(error)
+  }
+})
+
+app.delete('/api/watch-repositories/:id', async (request, response, next) => {
+  try {
+    const settings = await loadAnalysisSettings()
+    await deleteWatchedRepository(settings, request.params.id)
+    response.status(204).end()
+  } catch (error) {
+    next(error)
   }
 })
 

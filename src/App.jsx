@@ -47,8 +47,9 @@ import {
   Eye,
   ExternalLink,
   X,
+  Trash2,
 } from 'lucide-react'
-import { addWatchedRepository, checkCachedSummary, generateRepositorySummary, getAnalysisSettings, getAuthenticationStatus, getDigitalHumanAdapterStatus, getHotPullRequests, getSystemStatus, getWatchedRepositories, getWindow, getWindows, inspectRepositoryAddress, login, repositorySummaryDownloadUrl, retryWindow, saveAnalysisSettings, saveGitHubApiKey, saveProviderApiKey, snoopPullRequest, subscribeToWindowEvents, syncWatchedRepository, testProvider, windowDownloadUrl } from './api'
+import { addWatchedRepository, checkCachedSummary, deleteWatchedRepository, generateRepositorySummary, getAnalysisSettings, getAuthenticationStatus, getDigitalHumanAdapterStatus, getHotPullRequests, getSystemStatus, getWatchedRepositories, getWindow, getWindows, inspectRepositoryAddress, login, repositorySummaryDownloadUrl, retryWindow, saveAnalysisSettings, saveGitHubApiKey, saveProviderApiKey, snoopPullRequest, subscribeToWindowEvents, syncWatchedRepository, testProvider, windowDownloadUrl } from './api'
 
 const navigation = [
   { id: 'overview', label: '态势总览', icon: LayoutDashboard },
@@ -179,6 +180,18 @@ function App() {
     setSelectedRepository(repository)
   }
 
+  const removeRepository = async (repository) => {
+    try {
+      await deleteWatchedRepository(repository.id)
+      setRepositories((current) => current.filter((item) => item.id !== repository.id))
+      setSelectedRepository((current) => current?.id === repository.id ? null : current)
+      if (page === 'repository-detail') navigate('repositories')
+      setNotice(`${repository.project || repository.name} 已从观察列表移除。`)
+    } catch (error) {
+      setNotice(`移除 ${repository.project || repository.name} 失败：${error.message}`)
+    }
+  }
+
   return (
     <div className="app-shell">
       <Sidebar page={page} navigate={navigate} open={sidebarOpen} repositoryCount={repositories.length} />
@@ -194,9 +207,9 @@ function App() {
           {page === 'overview' && <Overview navigate={navigate} repositories={repositories} repositoriesState={repositoriesState} onOpenRepository={openRepository} />}
           {page === 'signals' && <SignalsView />}
           {page === 'repositories' && (
-            <RepositoriesView repositories={repositories} canManage={authentication.authenticated} onAdd={() => setAddRepoOpen(true)} onSelect={openRepository} />
+            <RepositoriesView repositories={repositories} canManage={authentication.authenticated} onAdd={() => setAddRepoOpen(true)} onSelect={openRepository} onDelete={removeRepository} />
           )}
-          {page === 'repository-detail' && (selectedRepository ? <RepositoryDetail repository={selectedRepository} canManage={authentication.authenticated} onBack={() => navigate('repositories')} onRepositoryUpdated={updateRepository} /> : <EmptyState icon={Github} title="未选择观察项目" description="请先从观察项目列表打开一个真实仓库。" action="返回观察项目" onAction={() => navigate('repositories')} />)}
+          {page === 'repository-detail' && (selectedRepository ? <RepositoryDetail repository={selectedRepository} canManage={authentication.authenticated} onBack={() => navigate('repositories')} onRepositoryUpdated={updateRepository} onDelete={removeRepository} /> : <EmptyState icon={Github} title="未选择观察项目" description="请先从观察项目列表打开一个真实仓库。" action="返回观察项目" onAction={() => navigate('repositories')} />)}
           {page === 'topics' && <TopicsView />}
           {page === 'windows' && <WindowsView canManage={authentication.authenticated} />}
           {page === 'admin' && <AdminView authentication={authentication} onAuthenticated={(user) => setAuthentication({ loading: false, authenticated: true, setupRequired: false, user, error: '' })} />}
@@ -406,24 +419,29 @@ function SectionHeader({ index, title, note, action, onAction, compact = false }
   )
 }
 
-function RepositoryTable({ rows, condensed = false, onSelect }) {
+function RepositoryTable({ rows, condensed = false, onSelect, onDelete }) {
   return (
     <div className={`data-table repository-table ${condensed ? 'condensed' : ''}`}>
       <div className="table-row table-head">
-        <span>Repository</span><span>Source</span><span>Branch</span><span>Code context</span><span>Sync status</span><span>Created</span>
+        <span>Repository</span><span>Source</span><span>Branch</span><span>Code context</span><span>Sync status</span><span>Created</span>{onDelete && <span className="table-actions-head" />}
       </div>
       {rows.map((repo) => (
-        <button className="table-row" key={repo.id || `${repo.org}/${repo.name}`} onClick={() => onSelect?.(repo)}>
-          <span className="repo-identity">
-            <span className="repo-glyph" style={{ '--repo-color': repo.color }}>{repo.initial}</span>
-            <span><strong>{repo.name}</strong><small>{repo.host} · {repo.project}</small></span>
-          </span>
-          <span>{repo.sourceType === 'gerrit' ? 'GERRIT' : 'GITHUB'}</span>
-          <span>{repo.branch}</span>
-          <span>{repo.syncMode === 'full' ? 'Full local' : 'On demand'}</span>
-          <span><StatusPill status={repo.syncStatus === 'ready' ? 'ready' : repo.syncStatus === 'failed' ? 'failed' : repo.syncStatus === 'syncing' ? 'running' : 'idle'} /></span>
-          <span>{repo.createdAt ? new Date(repo.createdAt).toLocaleDateString('zh-CN') : '—'}</span>
-        </button>
+        <div className="table-row" key={repo.id || `${repo.org}/${repo.name}`}>
+          <button className="table-row-main" onClick={() => onSelect?.(repo)}>
+            <span className="repo-identity">
+              <span className="repo-glyph" style={{ '--repo-color': repo.color }}>{repo.initial}</span>
+              <span><strong>{repo.name}</strong><small>{repo.host} · {repo.project}</small></span>
+            </span>
+            <span>{repo.sourceType === 'gerrit' ? 'GERRIT' : 'GITHUB'}</span>
+            <span>{repo.branch}</span>
+            <span>{repo.syncMode === 'full' ? 'Full local' : 'On demand'}</span>
+            <span><StatusPill status={repo.syncStatus === 'ready' ? 'ready' : repo.syncStatus === 'failed' ? 'failed' : repo.syncStatus === 'syncing' ? 'running' : 'idle'} title={repo.syncError || null} />{repo.syncError && <small className="sync-error-hint">{repo.syncError}</small>}</span>
+            <span>{repo.createdAt ? new Date(repo.createdAt).toLocaleDateString('zh-CN') : '—'}</span>
+          </button>
+          {onDelete && (
+            <button className="table-row-action icon-button" title={`移除 ${repo.project}`} onClick={(e) => { e.stopPropagation(); if (window.confirm(`确定要移除观察项目 ${repo.project} 吗？`)) onDelete(repo) }}><Trash2 size={14} /></button>
+          )}
+        </div>
       ))}
       {!rows.length && <div className="table-empty">没有匹配的真实观察项目。</div>}
     </div>
@@ -446,7 +464,7 @@ function SignalsView() {
   )
 }
 
-function RepositoriesView({ repositories, canManage, onAdd, onSelect }) {
+function RepositoriesView({ repositories, canManage, onAdd, onSelect, onDelete }) {
   const [query, setQuery] = useState('')
   const filtered = repositories.filter((repo) => `${repo.host || ''}/${repo.org}/${repo.name}/${repo.branch || ''}`.toLowerCase().includes(query.toLowerCase()))
   return (
@@ -461,7 +479,7 @@ function RepositoriesView({ repositories, canManage, onAdd, onSelect }) {
         <label className="inline-search"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索 host / project / branch" /></label>
         <div className="toolbar-right">{canManage ? <button className="primary-button" onClick={onAdd}><Plus size={16} /> 添加观察项目</button> : <span className="public-readonly-note"><LockKeyhole size={14} /> 公开只读</span>}</div>
       </div>
-      <RepositoryTable rows={filtered} onSelect={onSelect} />
+      <RepositoryTable rows={filtered} onSelect={onSelect} onDelete={canManage ? onDelete : null} />
       <div className="table-footnote"><span><span className="idle-dot" /> Watchlist 已持久化到 workspace</span><span>采集仅在用户请求报告、Hot Change 或 Snoop 时执行</span></div>
     </div>
   )
@@ -580,7 +598,7 @@ function MarkdownReport({ content }) {
   >{content || ''}</ReactMarkdown>
 }
 
-function RepositoryDetail({ repository, canManage, onBack, onRepositoryUpdated }) {
+function RepositoryDetail({ repository, canManage, onBack, onRepositoryUpdated, onDelete }) {
   const [preset, setPreset] = useState('24h')
   const [range, setRange] = useState(() => rangeFromHours(24))
   const [report, setReport] = useState(null)
@@ -680,6 +698,7 @@ function RepositoryDetail({ repository, canManage, onBack, onRepositoryUpdated }
           <span className="repo-glyph large" style={{ '--repo-color': repository.color }}>{repository.initial}</span>
           <div><small>{repository.sourceType === 'gerrit' ? 'GERRIT' : 'GITHUB'} REPOSITORY INTELLIGENCE FILE</small><h2>{repository.name}</h2><p>{repository.org} · 观察分支 {repository.branch || 'main'} · {localSync.lastFullSync ? `全仓同步 ${new Date(localSync.lastFullSync).toLocaleString('zh-CN')}` : '尚未执行全仓同步'}</p></div>
           <div className="repository-intel-score"><span>COLLECTION</span><strong>{report ? 'READY' : '—'}</strong><small>{report ? '本时间段已采集' : '按需触发'}</small></div>
+          {canManage && onDelete && <button className="icon-button danger-icon-button" title="移除观察项目" onClick={() => { if (window.confirm(`确定要移除 ${repository.project} 的观察吗？已生成的报告会保留在磁盘上。`)) onDelete(repository) }}><Trash2 size={16} /></button>}
         </div>
         <div className="range-control">
           <div className="range-presets">{repositoryRangePresets.map((item) => <button key={item.id} className={preset === item.id ? 'active' : ''} onClick={() => selectPreset(item)}>{item.label}</button>)}</div>
@@ -1203,9 +1222,9 @@ function AuditLog() {
   return <section className="admin-section"><div className="admin-section-head"><div><h2>审计日志</h2><p>审计存储尚未接入，因此没有可展示的真实记录。</p></div><button className="secondary-button" disabled><Filter size={16} /> 筛选</button></div><EmptyState icon={FileCheck2} title="没有审计数据" description="当前版本不会用示例操作填充审计列表。" /></section>
 }
 
-function StatusPill({ status }) {
+function StatusPill({ status, title }) {
   const labelMap = { live: 'LIVE', published: 'PUBLISHED', degraded: 'DEGRADED', queued: 'QUEUED', revised: 'REVISED', active: 'ACTIVE', pending: 'PENDING', healthy: 'HEALTHY', running: 'RUNNING', ready: 'READY', missing: 'NOT READY', configured: 'CONFIGURED', reserved: 'ADAPTER RESERVED', cached: 'CACHE HIT', failed: 'FAILED', idle: 'ON DEMAND' }
-  return <span className={`status-pill ${status}`}><i />{labelMap[status] || status.toUpperCase()}</span>
+  return <span className={`status-pill ${status}`} title={title}><i />{labelMap[status] || status.toUpperCase()}</span>
 }
 
 function CommandPalette({ onClose, navigate, repositories, onOpenRepository }) {

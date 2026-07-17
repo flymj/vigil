@@ -91,6 +91,15 @@ export async function persistWatchedRepository(settings, sourceValue, metadata =
   })
 }
 
+export async function deleteWatchedRepository(settings, id) {
+  return serializeWatchlistMutation(async () => {
+    const current = await readWatchlist(settings)
+    const next = current.filter((repository) => repository.id !== id)
+    if (next.length === current.length) throw new Error('Watched repository not found')
+    await writeWatchlist(settings, next)
+  })
+}
+
 export async function updateWatchedRepository(settings, id, patch) {
   return serializeWatchlistMutation(async () => {
     const current = await readWatchlist(settings)

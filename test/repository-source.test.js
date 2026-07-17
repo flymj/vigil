@@ -9,7 +9,7 @@ import {
   parseRepositoryAddress,
   repositoryIdentity,
 } from '../server/repository-source.js'
-import { loadWatchedRepositories, persistWatchedRepository } from '../server/repository-store.js'
+import { loadWatchedRepositories, persistWatchedRepository, deleteWatchedRepository } from '../server/repository-store.js'
 
 test('parses GitHub and Gerrit repository addresses into a common source shape', () => {
   assert.deepEqual(parseRepositoryAddress('vllm-project/vllm'), {
@@ -129,6 +129,25 @@ test('concurrent watchlist writes do not lose repositories', async () => {
     ])
     const loaded = await loadWatchedRepositories(settings)
     assert.deepEqual(new Set(loaded.map((repository) => repository.project)), new Set(['owner/first', 'owner/second']))
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('deleteWatchedRepository removes a watch from the list and throws when id is unknown', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'vigil-watchlist-delete-'))
+  const settings = { workspace: { directory } }
+  const first = normalizeRepositorySource({ ...parseRepositoryAddress('owner/first'), branch: 'main' })
+  const second = normalizeRepositorySource({ ...parseRepositoryAddress('owner/second'), branch: 'main' })
+  try {
+    const saved = await persistWatchedRepository(settings, first)
+    await persistWatchedRepository(settings, second)
+    assert.equal((await loadWatchedRepositories(settings)).length, 2)
+    await deleteWatchedRepository(settings, saved.id)
+    const remaining = await loadWatchedRepositories(settings)
+    assert.equal(remaining.length, 1)
+    assert.equal(remaining[0].project, 'owner/second')
+    await assert.rejects(deleteWatchedRepository(settings, saved.id), /not found/i)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
