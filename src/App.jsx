@@ -580,22 +580,24 @@ function KaTeXBlock({ source }) {
 }
 
 function MarkdownReport({ content }) {
-  return <ReactMarkdown
-    remarkPlugins={[remarkGfm, remarkMath]}
-    rehypePlugins={[rehypeKatex]}
-    components={{
-      a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>,
-      pre: ({ children }) => {
-        const code = Array.isArray(children) ? children[0] : children
-        const language = /language-([\w-]+)/.exec(code?.props?.className || '')?.[1]?.toLowerCase()
-        const source = String(code?.props?.children || '').replace(/\n$/, '')
-        if (language === 'mermaid') return <MermaidBlock source={source} />
-        if (language === 'echarts') return <EChartsBlock source={source} />
-        if (language === 'katex' || language === 'tex') return <KaTeXBlock source={source} />
-        return <pre>{children}</pre>
-      },
-    }}
-  >{content || ''}</ReactMarkdown>
+  return <div className="markdown-report">
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      components={{
+        a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer">{children}</a>,
+        pre: ({ children }) => {
+          const code = Array.isArray(children) ? children[0] : children
+          const language = /language-([\w-]+)/.exec(code?.props?.className || '')?.[1]?.toLowerCase()
+          const source = String(code?.props?.children || '').replace(/\n$/, '')
+          if (language === 'mermaid') return <MermaidBlock source={source} />
+          if (language === 'echarts') return <EChartsBlock source={source} />
+          if (language === 'katex' || language === 'tex') return <KaTeXBlock source={source} />
+          return <pre>{children}</pre>
+        },
+      }}
+    >{content || ''}</ReactMarkdown>
+  </div>
 }
 
 function RepositoryDetail({ repository, canManage, onBack, onRepositoryUpdated, onDelete }) {
@@ -955,7 +957,7 @@ function WindowsView({ canManage }) {
   return (
     <div className="page-enter window-page">
       <header className="window-page-head">
-        <div><span>WINDOW RAIL / DURABLE ARCHIVE</span><h2>从采集到发布，一条可回放的真实轨迹。</h2><p>每个事件均来自 Window ledger；运行中的 Window 通过 SSE 实时落入这条轨道。</p></div>
+        <div><span>WINDOW ARCHIVE</span><h2>跨仓库发布记录</h2><p>按发布时段浏览执行轨迹、持久化事件与聚合报告。</p></div>
         <div className="window-page-actions"><div className={`schedule-chip ${state.scheduler?.enabled ? 'enabled' : ''}`}><Activity size={14} /><span>{state.scheduler?.enabled ? `${state.scheduler.timezone} · ${state.scheduler.publishTimes?.join(' / ')}` : 'SCHEDULE DISABLED'}</span></div><button className="secondary-button" onClick={refreshArchive}><RefreshCw size={15} /> 刷新档案</button></div>
       </header>
       {state.error && <div className="window-inline-error">{state.error}</div>}
@@ -970,6 +972,16 @@ function WindowsView({ canManage }) {
 
 function WindowArchive({ windows, selectedId, onSelect }) {
   return <aside className="window-archive" aria-label="Window 档案列表"><div className="window-archive-head"><Archive size={17} /><span>ARCHIVE · {windows.length}</span></div>{windows.map((record) => { const counts = windowOutcomeCounts(record); return <button type="button" key={record.id} className={`window-archive-row ${record.id === selectedId ? 'selected' : ''}`} onClick={() => onSelect(record.id)}><span className="archive-range"><strong>{windowIntervalLabel(record)}</strong><small>{record.timezone} · published slot {record.publishTime}</small></span><span className="archive-outcome"><i>{counts.succeeded}</i> ok <b>{counts.failed}</b> failed</span><StatusPill status={record.status} /><ChevronRight size={16} /></button> })}</aside>
+}
+
+function WindowEventHistory({ events, timezone, onSelectEvent }) {
+  return <details className="window-event-history">
+    <summary>
+      <span className="event-history-title"><CircleDot size={15} /><span><strong>执行步骤</strong><small>{events.length} 条已持久化事件</small></span></span>
+      <span className="event-history-action"><span className="event-history-expand">展开查看</span><span className="event-history-collapse">收起步骤</span><ChevronDown size={15} /></span>
+    </summary>
+    <div className="window-event-list">{events.map((event) => <button type="button" key={`${event.sequence}-list`} onClick={() => onSelectEvent(event)} className={event.type.includes('failed') ? 'failed' : ''}><time>{formatWindowTimestamp(event.at, timezone, { withSeconds: true })}</time><span>{event.repository || 'WINDOW'}</span><strong>{eventDescription(event)}</strong><ChevronRight size={14} /></button>)}</div>
+  </details>
 }
 
 function WindowRail({ record, canManage, retrying, onRetry, onSelectEvent }) {
@@ -988,8 +1000,8 @@ function WindowRail({ record, canManage, retrying, onRetry, onSelectEvent }) {
       </div>
       <p className="rail-caption">{live ? '实时执行中：新事件会在持久化后进入轨道。' : '已归档：轨道按持久化事件的实际发生时间回放。'}</p>
     </div>
-    <div className="window-event-list">{events.map((event) => <button type="button" key={`${event.sequence}-list`} onClick={() => onSelectEvent(event)} className={event.type.includes('failed') ? 'failed' : ''}><time>{formatWindowTimestamp(event.at, record.timezone, { withSeconds: true })}</time><span>{event.repository || 'WINDOW'}</span><strong>{eventDescription(event)}</strong><ChevronRight size={14} /></button>)}</div>
-    <div className="window-report-zone"><div className="window-report-actions"><div><span>WINDOW REPORT</span><small>{record.report?.generatedAt ? `generated ${formatWindowTimestamp(record.report.generatedAt, record.timezone, { withSeconds: true })}` : '正在等待报告持久化'}</small></div>{record.artifact && <div><a className="secondary-button" href={windowDownloadUrl(record.id, 'markdown')}><Download size={14} /> Markdown</a><a className="secondary-button" href={windowDownloadUrl(record.id, 'json')}><Download size={14} /> JSON</a></div>}</div>{record.report?.analysis?.content ? <div className="window-report-content"><MarkdownReport content={record.report.analysis.content} /></div> : <p className="window-report-pending">汇总报告会在仓库任务全部结束并完成持久化后出现。</p>}{record.status === 'failed' && canManage && <button className="primary-button retry-window-button" onClick={onRetry} disabled={retrying}><RefreshCw size={15} className={retrying ? 'spin' : ''} /> {retrying ? '重新排队中…' : '重试这个 Window'}</button>}</div>
+    <WindowEventHistory key={record.id} events={events} timezone={record.timezone} onSelectEvent={onSelectEvent} />
+    <div className="window-report-zone"><div className="window-report-actions"><div><span>WINDOW REPORT</span><small>{record.report?.generatedAt ? `generated ${formatWindowTimestamp(record.report.generatedAt, record.timezone, { withSeconds: true })}` : '正在等待报告持久化'}</small></div>{record.artifact && <div><a className="secondary-button" href={windowDownloadUrl(record.id, 'markdown')}><Download size={14} /> Markdown</a><a className="secondary-button" href={windowDownloadUrl(record.id, 'json')}><Download size={14} /> JSON</a></div>}</div>{record.report?.analysis?.content ? <article className="window-report-content" aria-label="Window Markdown 报告"><MarkdownReport content={record.report.analysis.content} /></article> : <p className="window-report-pending">汇总报告会在仓库任务全部结束并完成持久化后出现。</p>}{record.status === 'failed' && canManage && <button className="primary-button retry-window-button" onClick={onRetry} disabled={retrying}><RefreshCw size={15} className={retrying ? 'spin' : ''} /> {retrying ? '重新排队中…' : '重试这个 Window'}</button>}</div>
   </section>
 }
 
