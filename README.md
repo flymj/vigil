@@ -1,6 +1,6 @@
 # Vigil
 
-Vigil is a local Repository Intelligence Monitor for real GitHub and Gerrit repositories. It persists an explicit watchlist, produces on-demand repository reports, and can publish scheduled cross-repository Windows with a replayable event timeline.
+Vigil is a local Repository Intelligence Monitor for real GitHub and Gerrit repositories. It persists an explicit watchlist, produces on-demand repository reports, publishes scheduled cross-repository Windows, and can turn closed daily evidence into durable Technical Signals and Technical Topics through Dream.
 
 ## Run locally
 
@@ -8,6 +8,8 @@ Vigil is a local Repository Intelligence Monitor for real GitHub and Gerrit repo
 npm install
 npm run dev
 ```
+
+Dream requires Node.js `>= 24.15.0` for the built-in SQLite ledger. Dream remains disabled unless explicitly enabled; the rest of Vigil continues to use its existing local workflow.
 
 Build a production bundle with:
 
@@ -28,9 +30,11 @@ This repository contains an interactive frontend plus a small local analysis API
 - a status endpoint and UI that report observed local configuration without exposing secrets;
 - a local scheduled Window pipeline with durable run records, Markdown/JSON artifacts, per-repository isolation, retries, and SSE event replay;
 - a Window Rail that shows real pipeline events live and replays the persisted archive after publication;
+- a bounded daily Dream pipeline with Host-controlled evidence, duplicate suppression, append-only Signal/Topic revisions, forecast evaluation, atomic SQLite commits, and explicit no-finding/blocked outcomes;
+- compact Technical Signal and Technical Topic ledger views with evidence, corrections, linked entities, and operational freshness states;
 - a digital-human adapter boundary without coupling Vigil to Flyclaw's evolving employee contract.
 
-No demo repositories, PRs, users, audit events, quotas, health percentages, signals, topics, or Window reports are bundled. Pages without a real backing pipeline render an explicit empty state. Derived cross-repository signals/topics, PAM/session/RBAC, quotas, and audit persistence remain product boundaries.
+No demo repositories, PRs, users, audit events, quotas, health percentages, Signals, Topics, or Window reports are bundled. A successful Dream may honestly publish no finding. PAM/session/RBAC expansion, quotas, audit persistence, cross-workspace reasoning, arbitrary agent tools, and outbound delivery remain product boundaries.
 
 ## First administrator
 
@@ -88,6 +92,24 @@ Every Window is identified by its UTC range and stored in `<workspace>/window-ru
 The local API also exposes `GET /api/windows`, `GET /api/windows/:id`, replaying `GET /api/windows/:id/events`, downloads at `GET /api/windows/:id/download?format=markdown|json`, plus administrator-only `POST /api/windows/trigger` and `POST /api/windows/:id/retry` operations.
 
 DingTalk delivery is intentionally not included yet. The current implementation produces and archives the Window locally; an outbound robot/webhook delivery layer can be added later without changing the scheduler, ledger, or report contract.
+
+## Daily Dream, Technical Signals, and Technical Topics
+
+Dream consumes durable daily evidence only after a local-midnight Window has been published. It first scouts a small candidate set, then lets the Host resolve only pre-authorized evidence, and finally asks the configured Provider for one strict Dream v2.1 batch. The Host validates all IDs, evidence references, ledger versions, fingerprints, forecast closures, and context hashes before an atomic SQLite commit.
+
+Open **访问与系统 → 分析引擎** to configure Dream. Automatic readiness requires:
+
+- Window scheduling enabled with a `00:00` boundary;
+- the same IANA timezone for Window and Dream;
+- a durable `published` or `degraded` midnight Window;
+- a ready OpenAI-compatible Provider;
+- Node.js `>= 24.15.0` and a writable Workspace.
+
+Dream is disabled by default. Saving an enabled configuration scans up to the configured catch-up days in chronological order. **Dream now** runs only the most recent eligible closed day. A `no_finding` or `duplicate_only` day is a valid completion and advances the cursor; a blocked or failed run never advances the cursor and can be retried after the cause is fixed.
+
+The authoritative ledger is `<workspace>/dream.sqlite3`. It keeps stable identities, fingerprint aliases, revisions, evidence, candidate dispositions, forecasts/evaluations, leases, run audit, and the accepted cursor. Public Signal/Topic APIs expose safe projections without raw snippets, prompts, local paths, or secrets; authenticated run detail retains bounded diagnostic context.
+
+See [Dream architecture](docs/dream/architecture.md) for the reasoning and persistence contract, and [Dream operations](docs/dream/operations.md) for settings, manual trigger/retry, diagnosis, backup, recovery, rollback, and remote rollout gates.
 
 The report reader renders CommonMark/GFM, tables, task lists, standard LaTeX math, and these fenced visual blocks:
 

@@ -1,0 +1,21 @@
+{
+  "kind": "dream_batch",
+  "schema_version": "2.1",
+  "run": {
+    "id": "run-11111111-1111-4111-8111-111111111111",
+    "scope": "workspace:example",
+    "generated_at": "2026-07-18T00:05:00Z",
+    "horizon": { "start": "2026-07-17T00:00:00Z", "end": "2026-07-18T00:00:00Z", "timezone": "Asia/Shanghai" },
+    "context_hash": "2f01d80e6805157cd41e9e9159c6caa2de7304458f0443590ec7cf354144adaf",
+    "idempotency_key": "workspace:example:2026-07-18T00:00:00Z:2.1",
+    "known_state": { "signals": 0, "topics": 0, "evidence": 0 },
+    "cursor": { "before": null, "candidate_after": "2026-07-18T00:00:00Z", "advance_on_publish": true },
+    "outcome": "no_finding",
+    "notes": "No candidate crossed the evidence gate.",
+    "candidates": [],
+    "suppression_groups": []
+  },
+  "signal_changes": [],
+  "topic_decision": { "action": "none", "reason": "No durable mechanism-level synthesis was justified." },
+  "topic_changes": []
+}

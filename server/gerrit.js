@@ -202,6 +202,7 @@ export async function snoopGerritChange(settings, repository, changeNumber) {
     files,
     commits: detail.current_revision ? [{
       sha: detail.current_revision.slice(0, 12),
+      fullSha: detail.current_revision,
       message: trimText(revision.commit?.message || detail.subject, 500),
       author: revision.commit?.author?.name || normalized.author,
       date: gerritDate(revision.commit?.author?.date)?.toISOString() || normalized.updatedAt,
@@ -239,6 +240,7 @@ export async function collectGerritWindow(settings, repository, range) {
     },
     commits: merged.slice(0, 100).map((change) => ({
       sha: String(change.current_revision || '').slice(0, 12),
+      fullSha: String(change.current_revision || ''),
       message: trimText(change.subject, 500),
       author: change.owner?.username || change.owner?.name || '',
       date: gerritDate(change.submitted || change.updated)?.toISOString() || null,

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vigil.local/schemas/dream-context-v2.1.json",
+  "title": "Vigil Host-prepared Dream context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schema_version", "run", "input_manifest", "evidence_catalog", "known_state", "issued_ids", "limits", "context_hash"],
+  "properties": {
+    "kind": { "const": "dream_context" },
+    "schema_version": { "const": "2.1" },
+    "run": { "type": "object" },
+    "input_manifest": { "type": "array" },
+    "evidence_catalog": { "type": "array" },
+    "known_state": { "type": "object" },
+    "issued_ids": { "type": "object" },
+    "limits": { "type": "object" },
+    "context_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

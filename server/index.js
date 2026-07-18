@@ -25,6 +25,10 @@ import { createWindowRunner } from './window-runner.js'
 import { loadWindowArtifact } from './window-reports.js'
 import { createWindowScheduler } from './window-scheduler.js'
 import { createWindowStore } from './window-store.js'
+import { createDreamStore, dreamDatabasePath } from './dream-store.js'
+import { createDreamRunner } from './dream-runner.js'
+import { createDreamScheduler } from './dream-scheduler.js'
+import { registerDreamRoutes } from './dream-routes.js'
 import {
   authenticate,
   authenticationStatus,
@@ -70,6 +74,31 @@ const windowScheduler = createWindowScheduler({
 })
 await windowScheduler.start()
 
+let liveDreamStore = null
+let liveDreamPath = null
+function getDreamStore(settings) {
+  const target = dreamDatabasePath(settings)
+  if (!liveDreamStore || liveDreamPath !== target) {
+    liveDreamStore?.close()
+    liveDreamStore = createDreamStore(settings)
+    liveDreamPath = target
+  }
+  return liveDreamStore
+}
+
+const dreamScheduler = createDreamScheduler({
+  loadSettings: loadAnalysisSettings,
+  loadRepositories: loadWatchedRepositories,
+  loadWindows: (settings) => createWindowStore(settings).list(),
+  getStore: getDreamStore,
+  runner: {
+    run(horizon, settings, repositories) {
+      return createDreamRunner({ store: getDreamStore(settings), windowStore: createWindowStore(settings) }).run(horizon, settings, repositories)
+    },
+  },
+})
+await dreamScheduler.start()
+
 app.get('/api/health', (_request, response) => {
   response.json({ ok: true, service: 'vigil-api' })
 })
@@ -108,11 +137,18 @@ app.use('/api', (request, response, next) => {
   return requireAuthenticatedAdmin(request, response, next)
 })
 
+registerDreamRoutes(app, {
+  loadSettings: loadAnalysisSettings,
+  getStore: getDreamStore,
+  scheduler: dreamScheduler,
+  authenticationStatus,
+})
+
 app.get('/api/system-status', async (_request, response, next) => {
   try {
     const settings = await loadAnalysisSettings()
     const repositories = await loadWatchedRepositories(settings)
-    response.json(await collectSystemStatus(settings, repositories, process.env, await windowScheduler.status()))
+    response.json(await collectSystemStatus(settings, repositories, process.env, await windowScheduler.status(), await dreamScheduler.status()))
   } catch (error) {
     next(error)
   }
@@ -206,6 +242,7 @@ app.put('/api/settings/analysis', async (request, response, next) => {
   try {
     const settings = await saveAnalysisSettings(request.body)
     await windowScheduler.scan()
+    await dreamScheduler.scan()
     response.json({ settings, credential: await providerCredentialStatus(settings), githubCredential: await githubCredentialStatus() })
   } catch (error) {
     next(error)

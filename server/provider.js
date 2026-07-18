@@ -40,6 +40,29 @@ async function responsePayload(response) {
   return payload
 }
 
+export async function executeChatCompletion(settings, { system, user, maxOutputTokens, jsonMode = false }) {
+  const startedAt = performance.now()
+  const body = {
+    model: settings.provider.model,
+    max_tokens: Math.min(64_000, Math.max(256, Number(maxOutputTokens || settings.provider.maxOutputTokens))),
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
+  }
+  const response = await providerFetch(settings, '/chat/completions', { method: 'POST', body: JSON.stringify(body) })
+  const payload = await responsePayload(response)
+  const content = payload?.choices?.[0]?.message?.content
+  if (!content) throw new Error('Provider 返回成功，但没有 choices[0].message.content')
+  return {
+    content,
+    model: payload.model || settings.provider.model,
+    usage: payload.usage || null,
+    latencyMs: Math.round(performance.now() - startedAt),
+  }
+}
+
 export async function testProviderConnection(settings) {
   const startedAt = performance.now()
   const response = await providerFetch(settings, '/models', { method: 'GET' })

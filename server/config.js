@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { defaultWindowSchedule, normalizeWindowSchedule } from './window-schedule.js'
+import { defaultDreamSchedule, normalizeDreamSchedule } from './dream-schedule.js'
 
 export const configDirectory = process.env.VIGIL_CONFIG_DIR || path.join(process.cwd(), '.vigil')
 const configPath = path.join(configDirectory, 'analysis.json')
@@ -47,6 +48,7 @@ export const defaultAnalysisSettings = {
     adapter: 'unconfigured',
   },
   windowSchedule: defaultWindowSchedule,
+  dreamSchedule: defaultDreamSchedule,
 }
 
 function asNumber(value, fallback, min, max) {
@@ -64,6 +66,8 @@ export function normalizeAnalysisSettings(input = {}) {
   const repositoryContext = input.repositoryContext || {}
   const digitalHuman = input.digitalHuman || {}
   const windowSchedule = input.windowSchedule || {}
+  const dreamSchedule = input.dreamSchedule || {}
+  const normalizedWindowSchedule = normalizeWindowSchedule(windowSchedule)
   return {
     workspace: {
       directory: path.resolve(String(workspace.directory || defaultAnalysisSettings.workspace.directory)),
@@ -104,7 +108,8 @@ export function normalizeAnalysisSettings(input = {}) {
       bindingRef: String(digitalHuman.bindingRef || '').trim().slice(0, 240),
       adapter: 'unconfigured',
     },
-    windowSchedule: normalizeWindowSchedule(windowSchedule),
+    windowSchedule: normalizedWindowSchedule,
+    dreamSchedule: normalizeDreamSchedule(dreamSchedule, normalizedWindowSchedule),
   }
 }
 

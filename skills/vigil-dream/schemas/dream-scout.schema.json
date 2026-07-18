@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vigil.local/schemas/dream-scout-v2.1.json",
+  "title": "Vigil Dream scout response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schema_version", "context_hash", "candidates", "evidence_requests", "blocked_reason"],
+  "properties": {
+    "kind": { "const": "dream_scout" },
+    "schema_version": { "const": "2.1" },
+    "context_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "candidates": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "reason", "repository_ids", "source_refs", "compared_signal_ids", "compared_topic_ids"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "repository_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "source_refs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "compared_signal_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "compared_topic_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+        }
+      }
+    },
+    "evidence_requests": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["candidate_id", "repository_id", "kind", "ref", "reason"],
+        "properties": {
+          "candidate_id": { "type": "string" },
+          "repository_id": { "type": "string" },
+          "kind": { "enum": ["code_review", "commit"] },
+          "ref": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "blocked_reason": { "type": ["string", "null"] }
+  }
+}

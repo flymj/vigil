@@ -31,4 +31,7 @@ test('analysis settings disable scheduled windows by default and normalize their
     maxCatchUpWindows: 1,
     maxAttempts: 1,
   })
+  assert.equal(normalizeAnalysisSettings({}).dreamSchedule.enabled, false)
+  assert.equal(settings.dreamSchedule.timezone, 'America/New_York')
+  assert.equal(settings.dreamSchedule.maxOutputTokens, 16000)
 })

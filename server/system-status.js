@@ -3,7 +3,7 @@ import { hasConfiguredAdmin } from './auth.js'
 import { githubCredentialStatus, providerCredentialStatus } from './config.js'
 import { nextPublishAt, normalizeWindowSchedule } from './window-schedule.js'
 
-export async function collectSystemStatus(settings, repositories, environment = process.env, scheduler = {}) {
+export async function collectSystemStatus(settings, repositories, environment = process.env, scheduler = {}, dreamScheduler = {}) {
   let workspaceAvailable = false
   try {
     await access(settings.workspace.directory)
@@ -50,6 +50,18 @@ export async function collectSystemStatus(settings, repositories, environment = 
       endpointConfigured: Boolean(settings.provider.baseUrl && settings.provider.model),
       credentialConfigured: providerCredential.apiKeyConfigured,
       credentialRequired: providerCredential.requiresApiKey,
+      ready: Boolean(settings.provider.baseUrl && settings.provider.model) && providerCredential.providerReady,
+    },
+    dream: {
+      enabled: Boolean(dreamScheduler.enabled),
+      ready: Boolean(dreamScheduler.ready),
+      reasons: dreamScheduler.reasons || [],
+      timezone: dreamScheduler.timezone || settings.dreamSchedule?.timezone || windowSchedule.timezone,
+      nextRunAt: dreamScheduler.nextRunAt || null,
+      currentRun: dreamScheduler.currentRun || null,
+      lastRun: dreamScheduler.lastRun || null,
+      cursor: dreamScheduler.cursor || null,
+      versions: dreamScheduler.versions || { signals: 0, topics: 0, evidence: 0 },
     },
     authentication: { configured: await hasConfiguredAdmin() },
     audit: { configured: false },

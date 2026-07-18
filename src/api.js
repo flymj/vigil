@@ -153,6 +153,67 @@ export function getWindows() {
   return request('/api/windows')
 }
 
+function collectionQuery(options = {}) {
+  const query = new URLSearchParams()
+  if (options.query) query.set('q', options.query)
+  if (options.status) query.set('status', options.status)
+  if (options.limit) query.set('limit', String(options.limit))
+  if (options.offset) query.set('offset', String(options.offset))
+  const suffix = query.toString()
+  return suffix ? `?${suffix}` : ''
+}
+
+export function getSignals(options = {}) {
+  return request(`/api/signals${collectionQuery(options)}`)
+}
+
+export function getSignal(id) {
+  return request(`/api/signals/${encodeURIComponent(id)}`)
+}
+
+export function getSignalRevisions(id, options = {}) {
+  return request(`/api/signals/${encodeURIComponent(id)}/revisions${collectionQuery(options)}`)
+}
+
+export function getSignalForecasts(id, options = {}) {
+  return request(`/api/signals/${encodeURIComponent(id)}/forecasts${collectionQuery(options)}`)
+}
+
+export function getTopics(options = {}) {
+  return request(`/api/topics${collectionQuery(options)}`)
+}
+
+export function getTopic(id) {
+  return request(`/api/topics/${encodeURIComponent(id)}`)
+}
+
+export function getTopicRevisions(id, options = {}) {
+  return request(`/api/topics/${encodeURIComponent(id)}/revisions${collectionQuery(options)}`)
+}
+
+export function getTopicSignals(id, options = {}) {
+  return request(`/api/topics/${encodeURIComponent(id)}/signals${collectionQuery(options)}`)
+}
+
+export function getDreamRuns(options = {}) {
+  return request(`/api/dream-runs${collectionQuery(options)}`)
+}
+
+export function getDreamRun(id) {
+  return request(`/api/dream-runs/${encodeURIComponent(id)}`)
+}
+
+export function triggerDream(horizonEnd) {
+  return request('/api/dream-runs/trigger', {
+    method: 'POST',
+    body: JSON.stringify({ horizonEnd: horizonEnd || undefined }),
+  })
+}
+
+export function retryDreamRun(id) {
+  return request(`/api/dream-runs/${encodeURIComponent(id)}/retry`, { method: 'POST' })
+}
+
 export function getWindow(id) {
   return request(`/api/windows/${encodeURIComponent(id)}`)
 }

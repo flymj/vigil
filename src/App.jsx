@@ -50,6 +50,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { addWatchedRepository, checkCachedSummary, deleteWatchedRepository, generateRepositorySummary, getAnalysisSettings, getAuthenticationStatus, getDigitalHumanAdapterStatus, getHotPullRequests, getSystemStatus, getWatchedRepositories, getWindow, getWindows, inspectRepositoryAddress, login, repositorySummaryDownloadUrl, retryWindow, saveAnalysisSettings, saveGitHubApiKey, saveProviderApiKey, snoopPullRequest, subscribeToWindowEvents, syncWatchedRepository, testProvider, windowDownloadUrl } from './api'
+import { SignalsView, TopicsView } from './DreamViews'
 
 const navigation = [
   { id: 'overview', label: '态势总览', icon: LayoutDashboard },
@@ -79,10 +80,10 @@ function initialTheme() {
 
 const pageMeta = {
   overview: ['态势总览', '把事件变成值得跟踪的变化'],
-  signals: ['技术信号', '等待真实持续采集管线接入'],
+  signals: ['技术信号', '持续判断跨日趋势、预测与修正'],
   repositories: ['观察项目', '监控范围、branch 与代码上下文'],
   'repository-detail': ['仓库情报档案', '时间段总结、Hot PR 与 Snoop'],
-  topics: ['技术主题', '等待真实信号生成后聚合'],
+  topics: ['技术主题', '从信号链提炼可操作的技术论题'],
   windows: ['Window 档案', '已归档 Window 与实时执行轨'],
   admin: ['访问与系统', '分析配置与真实运行状态'],
 }
@@ -95,6 +96,7 @@ function App() {
   const [repositories, setRepositories] = useState([])
   const [repositoriesState, setRepositoriesState] = useState({ loading: true, error: '' })
   const [selectedRepository, setSelectedRepository] = useState(null)
+  const [dreamTarget, setDreamTarget] = useState(null)
   const [notice, setNotice] = useState('')
   const [theme, setTheme] = useState(initialTheme)
   const [authentication, setAuthentication] = useState({ loading: true, authenticated: false, setupRequired: false, user: null, error: '' })
@@ -154,9 +156,15 @@ function App() {
   }, [theme])
 
   const navigate = (target) => {
+    setDreamTarget(null)
     setPage(target)
     setSidebarOpen(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const openDreamEntity = (kind, id) => {
+    navigate(kind)
+    setDreamTarget({ kind, id })
   }
 
   const addRepository = (repository) => {
@@ -205,12 +213,12 @@ function App() {
         />
         <main className="workspace">
           {page === 'overview' && <Overview navigate={navigate} repositories={repositories} repositoriesState={repositoriesState} onOpenRepository={openRepository} />}
-          {page === 'signals' && <SignalsView />}
+          {page === 'signals' && <SignalsView canManage={authentication.authenticated} initialSelection={dreamTarget?.kind === 'signals' ? dreamTarget.id : ''} onOpenTopic={(id) => openDreamEntity('topics', id)} />}
           {page === 'repositories' && (
             <RepositoriesView repositories={repositories} canManage={authentication.authenticated} onAdd={() => setAddRepoOpen(true)} onSelect={openRepository} onDelete={removeRepository} />
           )}
           {page === 'repository-detail' && (selectedRepository ? <RepositoryDetail repository={selectedRepository} canManage={authentication.authenticated} onBack={() => navigate('repositories')} onRepositoryUpdated={updateRepository} onDelete={removeRepository} /> : <EmptyState icon={Github} title="未选择观察项目" description="请先从观察项目列表打开一个真实仓库。" action="返回观察项目" onAction={() => navigate('repositories')} />)}
-          {page === 'topics' && <TopicsView />}
+          {page === 'topics' && <TopicsView canManage={authentication.authenticated} initialSelection={dreamTarget?.kind === 'topics' ? dreamTarget.id : ''} onOpenSignal={(id) => openDreamEntity('signals', id)} />}
           {page === 'windows' && <WindowsView canManage={authentication.authenticated} />}
           {page === 'admin' && <AdminView authentication={authentication} onAuthenticated={(user) => setAuthentication({ loading: false, authenticated: true, setupRequired: false, user, error: '' })} />}
         </main>
@@ -454,14 +462,6 @@ function RiskLabel({ risk }) {
 
 function EmptyState({ icon: Icon, title, description, action, onAction, tone = 'neutral', spinning = false }) {
   return <div className={`product-empty-state ${tone}`}><span><Icon className={spinning ? 'spin' : ''} size={24} /></span><div><strong>{title}</strong><p>{description}</p>{action && <button className="secondary-button" onClick={onAction}>{action} <ArrowRight size={14} /></button>}</div></div>
-}
-
-function SignalsView() {
-  return (
-    <div className="page-enter empty-page">
-      <EmptyState icon={Radar} title="尚未生成技术信号" description="当前版本只在仓库档案中按需采集和分析。持续采集与跨仓库信号排序尚未启用，因此这里不会展示示例信号。" />
-    </div>
-  )
 }
 
 function RepositoriesView({ repositories, canManage, onAdd, onSelect, onDelete }) {
@@ -779,14 +779,6 @@ function SnoopDrawer({ state, onClose }) {
   )
 }
 
-function TopicsView() {
-  return (
-    <div className="page-enter empty-page">
-      <EmptyState icon={Tags} title="尚未生成技术主题" description="主题热力图依赖真实的跨仓库信号。目前持续信号管线未启用，因此不会展示演示 taxonomy 或热度。" />
-    </div>
-  )
-}
-
 function mergeWindowEvents(events, incoming) {
   return [...(events || []).filter((event) => event.sequence !== incoming.sequence), incoming]
     .sort((left, right) => left.sequence - right.sequence)
@@ -1044,6 +1036,7 @@ const fallbackAnalysisSettings = {
   repositoryContext: { strategy: 'git-mirror', fetchOnDeepDive: true },
   digitalHuman: { enabled: false, bindingRef: '', adapter: 'unconfigured' },
   windowSchedule: { enabled: false, timezone: 'Asia/Shanghai', publishTimes: ['00:00', '08:00', '16:00'], repositoryConcurrency: 3, maxCatchUpWindows: 12, maxAttempts: 3 },
+  dreamSchedule: { enabled: false, timezone: 'Asia/Shanghai', publishDelayMinutes: 10, maxCatchUpDays: 7, maxAttempts: 3, leaseSeconds: 900, maxCandidates: 4, maxEvidenceRequests: 6, maxSignalChanges: 3, maxTopicChanges: 2, scoutMaxOutputTokens: 4000, maxOutputTokens: 16000, contextMaxChars: 180000 },
 }
 
 function AnalysisSettings() {
@@ -1107,6 +1100,7 @@ function AnalysisSettings() {
   const deepDive = settings.deepDive
   const digitalHuman = settings.digitalHuman
   const windowSchedule = settings.windowSchedule || fallbackAnalysisSettings.windowSchedule
+  const dreamSchedule = settings.dreamSchedule || fallbackAnalysisSettings.dreamSchedule
   return (
     <section className="admin-section analysis-settings">
       <div className="admin-section-head">
@@ -1143,6 +1137,23 @@ function AnalysisSettings() {
         <div className="schedule-settings-head"><div><span className="settings-panel-icon acid"><Clock3 size={18} /></span><div><small>WINDOW SCHEDULE</small><h3>跨仓库 Window 发布器</h3><p>仅在已完整结束的时间段运行；服务重启后会补跑未发布的历史 Window。</p></div></div><Toggle checked={windowSchedule.enabled} onChange={(value) => update('windowSchedule', 'enabled', value)} label={windowSchedule.enabled ? '已启用' : '未启用'} /></div>
         <div className="schedule-settings-grid"><label className="settings-field"><span>IANA timezone</span><input value={windowSchedule.timezone} onChange={(event) => update('windowSchedule', 'timezone', event.target.value)} placeholder="Asia/Shanghai" /></label><label className="settings-field"><span>Publish times · HH:mm</span><input value={windowSchedule.publishTimes.join(', ')} onChange={(event) => update('windowSchedule', 'publishTimes', event.target.value.split(',').map((value) => value.trim()).filter(Boolean))} placeholder="00:00, 08:00, 16:00" /></label><label className="settings-field"><span>Repository concurrency</span><input type="number" min="1" max="8" value={windowSchedule.repositoryConcurrency} onChange={(event) => update('windowSchedule', 'repositoryConcurrency', Number(event.target.value))} /></label><label className="settings-field"><span>Catch-up Windows</span><input type="number" min="1" max="96" value={windowSchedule.maxCatchUpWindows} onChange={(event) => update('windowSchedule', 'maxCatchUpWindows', Number(event.target.value))} /></label><label className="settings-field"><span>Max attempts</span><input type="number" min="1" max="5" value={windowSchedule.maxAttempts} onChange={(event) => update('windowSchedule', 'maxAttempts', Number(event.target.value))} /></label></div>
         <div className="schedule-settings-note"><Activity size={14} /><span>保存后服务会立即扫描已结束但未发布的 Window。部分仓库失败仍会发布 degraded 报告；全部失败按持久化退避重试。不会提前创建当前未结束的时间段。</span></div>
+      </section>
+
+      <section className="schedule-settings dream-schedule-settings">
+        <div className="schedule-settings-head"><div><span className="settings-panel-icon acid"><Sparkles size={18} /></span><div><small>DREAM / PROTOCOL V2.1</small><h3>每日技术挖掘与可修正信号账本</h3><p>依托已封闭的 00:00 Window，先侦查候选，再定向扩展证据，并与所有已知指纹去重。</p></div></div><Toggle checked={dreamSchedule.enabled} onChange={(value) => update('dreamSchedule', 'enabled', value)} label={dreamSchedule.enabled ? '已启用' : '未启用'} /></div>
+        <div className="schedule-settings-grid dream-schedule-grid">
+          <label className="settings-field"><span>IANA timezone</span><input value={dreamSchedule.timezone} onChange={(event) => update('dreamSchedule', 'timezone', event.target.value)} placeholder={windowSchedule.timezone} /></label>
+          <label className="settings-field"><span>Delay after midnight · min</span><input type="number" min="0" max="240" value={dreamSchedule.publishDelayMinutes} onChange={(event) => update('dreamSchedule', 'publishDelayMinutes', Number(event.target.value))} /></label>
+          <label className="settings-field"><span>Catch-up days</span><input type="number" min="1" max="90" value={dreamSchedule.maxCatchUpDays} onChange={(event) => update('dreamSchedule', 'maxCatchUpDays', Number(event.target.value))} /></label>
+          <label className="settings-field"><span>Max attempts</span><input type="number" min="1" max="5" value={dreamSchedule.maxAttempts} onChange={(event) => update('dreamSchedule', 'maxAttempts', Number(event.target.value))} /></label>
+          <label className="settings-field"><span>Lease · sec</span><input type="number" min="30" max="7200" value={dreamSchedule.leaseSeconds} onChange={(event) => update('dreamSchedule', 'leaseSeconds', Number(event.target.value))} /></label>
+          <label className="settings-field"><span>Scout candidates</span><input type="number" min="1" max="8" value={dreamSchedule.maxCandidates} onChange={(event) => update('dreamSchedule', 'maxCandidates', Number(event.target.value))} /></label>
+          <label className="settings-field"><span>Evidence requests</span><input type="number" min="0" max="12" value={dreamSchedule.maxEvidenceRequests} onChange={(event) => update('dreamSchedule', 'maxEvidenceRequests', Number(event.target.value))} /></label>
+          <label className="settings-field"><span>Signal changes</span><input type="number" min="0" max="8" value={dreamSchedule.maxSignalChanges} onChange={(event) => update('dreamSchedule', 'maxSignalChanges', Number(event.target.value))} /></label>
+          <label className="settings-field"><span>Topic changes</span><input type="number" min="0" max="4" value={dreamSchedule.maxTopicChanges} onChange={(event) => update('dreamSchedule', 'maxTopicChanges', Number(event.target.value))} /></label>
+          <label className="settings-field"><span>Synthesis output</span><input type="number" min="1024" max="64000" value={dreamSchedule.maxOutputTokens} onChange={(event) => update('dreamSchedule', 'maxOutputTokens', Number(event.target.value))} /></label>
+        </div>
+        <div className="schedule-settings-note"><Activity size={14} /><span>Readiness: Window 必须启用、包含 00:00 发布点，并与 Dream 使用同一时区。no-finding 会正常推进游标；blocked / failed 不会污染账本，且可持久化重试。</span></div>
       </section>
 
       <div className="settings-columns">
@@ -1221,11 +1232,18 @@ function SystemStatus() {
   const collectionDetail = status.collection.scheduled
     ? `${status.collection.timezone} · ${status.collection.publishTimes.join(' / ')} · next ${status.collection.nextPublishAt ? new Date(status.collection.nextPublishAt).toLocaleString('zh-CN', { timeZone: status.collection.timezone }) : '—'}`
     : 'on demand · scheduled ingestion disabled'
+  const dreamStatus = status.dream.currentRun ? 'running' : status.dream.enabled ? (status.dream.ready ? 'ready' : 'missing') : 'idle'
+  const dreamDetail = status.dream.enabled
+    ? status.dream.ready
+      ? `${status.dream.timezone} · next ${status.dream.nextRunAt ? new Date(status.dream.nextRunAt).toLocaleString('zh-CN', { timeZone: status.dream.timezone }) : '—'} · cursor ${status.dream.cursor || '—'}`
+      : status.dream.reasons.join(' · ')
+    : 'daily technical discovery disabled'
   const services = [
     ['Local API', 'healthy', `checked ${new Date(status.checkedAt).toLocaleString('zh-CN')}`],
     ['Workspace', status.workspace.available ? 'ready' : 'missing', status.workspace.directory],
-    ['OpenAI-compatible provider', status.provider.credentialConfigured ? 'ready' : 'missing', `${status.provider.name} · ${status.provider.model}`],
+    ['OpenAI-compatible provider', status.provider.ready ? 'ready' : 'missing', `${status.provider.name} · ${status.provider.model}`],
     ['Repository collection', collectionStatus, collectionDetail],
+    ['Dream signal ledger', dreamStatus, dreamDetail],
   ]
   return <section className="admin-section"><div className="admin-section-head"><div><h2>系统状态</h2><p>只显示当前 API 实际读取到的本地配置与持久化状态。</p></div><button className="secondary-button" disabled={state.loading} onClick={refresh}><Activity size={16} /> {state.loading ? '刷新中' : '刷新状态'}</button></div><div className="service-grid">{services.map(([name, serviceStatus, detail]) => <div className="service-row" key={name}><span className={`service-light ${serviceStatus}`} /><div><strong>{name}</strong><small>{detail}</small></div><StatusPill status={serviceStatus} /></div>)}</div><div className="system-facts"><div><span>WATCH REPOSITORIES</span><strong>{status.repositories.total}</strong><small>{status.repositories.github} GitHub · {status.repositories.gerrit} Gerrit</small></div><div><span>FULL LOCAL READY</span><strong>{status.repositories.fullSyncReady}</strong><small>{status.repositories.fullSyncFailed} failed</small></div><div><span>GITHUB TOKEN</span><strong>{status.collection.githubTokenConfigured ? 'READY' : 'NOT SET'}</strong><small>公开仓库可不配置</small></div><div><span>GERRIT CREDENTIALS</span><strong>{status.collection.gerritCredentialsConfigured ? 'READY' : 'NOT SET'}</strong><small>公开 Gerrit 可不配置</small></div></div></section>
 }

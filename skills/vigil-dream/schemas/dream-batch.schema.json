@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vigil.local/schemas/dream-batch-v2.1.json",
+  "title": "Vigil Dream v2.1 batch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "schema_version", "run", "signal_changes", "topic_decision", "topic_changes"],
+  "properties": {
+    "kind": { "const": "dream_batch" },
+    "schema_version": { "const": "2.1" },
+    "run": { "$ref": "#/$defs/run" },
+    "signal_changes": { "type": "array", "items": { "$ref": "#/$defs/signalChange" }, "maxItems": 8 },
+    "topic_decision": { "$ref": "#/$defs/topicDecision" },
+    "topic_changes": { "type": "array", "items": { "$ref": "#/$defs/topicChange" }, "maxItems": 4 }
+  },
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "uuidId": { "type": "string", "pattern": "^[a-z]+-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$" },
+    "evidenceId": { "type": "string", "pattern": "^ev-[0-9a-f]{16}$" },
+    "fingerprintValue": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "stringList": { "type": "array", "items": { "$ref": "#/$defs/nonEmpty" }, "uniqueItems": true },
+    "evidenceIds": { "type": "array", "items": { "$ref": "#/$defs/evidenceId" }, "uniqueItems": true },
+    "horizon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end", "timezone"],
+      "properties": {
+        "start": { "$ref": "#/$defs/timestamp" },
+        "end": { "$ref": "#/$defs/timestamp" },
+        "timezone": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signals", "topics", "evidence"],
+      "properties": {
+        "signals": { "type": "integer", "minimum": 0 },
+        "topics": { "type": "integer", "minimum": 0 },
+        "evidence": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "cursor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["before", "candidate_after", "advance_on_publish"],
+      "properties": {
+        "before": { "type": ["string", "null"] },
+        "candidate_after": { "$ref": "#/$defs/timestamp" },
+        "advance_on_publish": { "type": "boolean" }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "disposition", "reason", "compared_signal_ids", "compared_topic_ids"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuidId" },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "disposition": { "enum": ["promoted_new", "attached_update", "duplicate", "rejected", "deferred"] },
+        "reason": { "$ref": "#/$defs/nonEmpty" },
+        "compared_signal_ids": { "$ref": "#/$defs/stringList" },
+        "compared_topic_ids": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "suppressionGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "canonical_source_key", "suppressed_source_keys", "reason"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuidId" },
+        "canonical_source_key": { "$ref": "#/$defs/nonEmpty" },
+        "suppressed_source_keys": { "$ref": "#/$defs/stringList" },
+        "reason": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "scope", "generated_at", "horizon", "context_hash", "idempotency_key", "known_state", "cursor", "outcome", "notes", "candidates", "suppression_groups"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuidId" },
+        "scope": { "$ref": "#/$defs/nonEmpty" },
+        "generated_at": { "$ref": "#/$defs/timestamp" },
+        "horizon": { "$ref": "#/$defs/horizon" },
+        "context_hash": { "$ref": "#/$defs/fingerprintValue" },
+        "idempotency_key": { "$ref": "#/$defs/nonEmpty" },
+        "known_state": { "$ref": "#/$defs/versions" },
+        "cursor": { "$ref": "#/$defs/cursor" },
+        "outcome": { "enum": ["findings", "state_updated", "duplicate_only", "no_finding", "blocked_incomplete_sources"] },
+        "notes": { "type": "string" },
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/candidate" }, "maxItems": 16 },
+        "suppression_groups": { "type": "array", "items": { "$ref": "#/$defs/suppressionGroup" }, "maxItems": 32 }
+      }
+    },
+    "fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current", "aliases"],
+      "properties": {
+        "current": { "$ref": "#/$defs/fingerprintValue" },
+        "aliases": { "type": "array", "items": { "$ref": "#/$defs/fingerprintValue" }, "uniqueItems": true }
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "evidence_ids"],
+      "properties": {
+        "claim": { "$ref": "#/$defs/nonEmpty" },
+        "evidence_ids": { "$ref": "#/$defs/evidenceIds" }
+      }
+    },
+    "forecastEvaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "forecast_id", "outcome", "observed", "evidence_ids", "horizon_expired"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuidId" },
+        "forecast_id": { "$ref": "#/$defs/uuidId" },
+        "outcome": { "enum": ["supported", "contradicted", "inconclusive", "not_observable"] },
+        "observed": { "$ref": "#/$defs/nonEmpty" },
+        "evidence_ids": { "$ref": "#/$defs/evidenceIds" },
+        "horizon_expired": { "type": "boolean" }
+      }
+    },
+    "forecast": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "claim", "due_at", "expected_observations"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuidId" },
+        "claim": { "$ref": "#/$defs/nonEmpty" },
+        "due_at": { "$ref": "#/$defs/timestamp" },
+        "expected_observations": { "$ref": "#/$defs/stringList" }
+      }
+    },
+    "signalRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "status", "fingerprint", "repositories", "summary", "baseline", "delta", "mechanism", "consequence", "evidence_boundary", "direction", "importance", "confidence", "facts", "inferences", "counter_evidence_ids", "unknowns", "next_checks", "evidence_ids", "forecast_evaluations", "forecasts", "supersedes", "superseded_by"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuidId" },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "status": { "enum": ["active", "inactive", "refuted", "superseded"] },
+        "fingerprint": { "$ref": "#/$defs/fingerprint" },
+        "repositories": { "$ref": "#/$defs/stringList" },
+        "summary": { "$ref": "#/$defs/nonEmpty" },
+        "baseline": { "$ref": "#/$defs/nonEmpty" },
+        "delta": { "$ref": "#/$defs/nonEmpty" },
+        "mechanism": { "$ref": "#/$defs/nonEmpty" },
+        "consequence": { "$ref": "#/$defs/nonEmpty" },
+        "evidence_boundary": { "$ref": "#/$defs/nonEmpty" },
+        "direction": { "enum": ["adoption", "migration", "centralization", "decentralization", "hardening", "optimization", "deprecation", "coupling", "decoupling", "expansion", "contraction", "risk_increase", "risk_reduction", "other"] },
+        "importance": { "type": "number", "minimum": 0, "maximum": 1 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "facts": { "type": "array", "items": { "$ref": "#/$defs/fact" } },
+        "inferences": { "$ref": "#/$defs/stringList" },
+        "counter_evidence_ids": { "$ref": "#/$defs/evidenceIds" },
+        "unknowns": { "$ref": "#/$defs/stringList" },
+        "next_checks": { "$ref": "#/$defs/stringList" },
+        "evidence_ids": { "$ref": "#/$defs/evidenceIds" },
+        "forecast_evaluations": { "type": "array", "items": { "$ref": "#/$defs/forecastEvaluation" } },
+        "forecasts": { "type": "array", "items": { "$ref": "#/$defs/forecast" } },
+        "supersedes": { "type": ["string", "null"] },
+        "superseded_by": { "type": ["string", "null"] }
+      }
+    },
+    "signalChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["change_id", "change_type", "signal_id", "candidate_id", "revision"],
+      "properties": {
+        "change_id": { "$ref": "#/$defs/uuidId" },
+        "change_type": { "enum": ["create", "update", "status_change", "supersede"] },
+        "signal_id": { "$ref": "#/$defs/uuidId" },
+        "candidate_id": { "$ref": "#/$defs/uuidId" },
+        "revision": { "$ref": "#/$defs/signalRevision" }
+      }
+    },
+    "topicDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "reason"],
+      "properties": {
+        "action": { "enum": ["none", "link", "update", "create"] },
+        "reason": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "topicFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim", "basis", "evidence_ids"],
+      "properties": {
+        "claim": { "$ref": "#/$defs/nonEmpty" },
+        "basis": { "enum": ["fact", "inference"] },
+        "evidence_ids": { "$ref": "#/$defs/evidenceIds" }
+      }
+    },
+    "topicRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "status", "fingerprint", "summary", "thesis", "scope", "mechanism", "applicability", "boundaries", "signal_ids", "evidence_ids", "findings", "counter_evidence_ids", "unknowns", "engineering_implications", "next_checks", "supersedes", "superseded_by"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuidId" },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "status": { "enum": ["active", "inactive", "superseded"] },
+        "fingerprint": { "$ref": "#/$defs/fingerprint" },
+        "summary": { "$ref": "#/$defs/nonEmpty" },
+        "thesis": { "$ref": "#/$defs/nonEmpty" },
+        "scope": { "$ref": "#/$defs/stringList" },
+        "mechanism": { "$ref": "#/$defs/nonEmpty" },
+        "applicability": { "$ref": "#/$defs/nonEmpty" },
+        "boundaries": { "$ref": "#/$defs/stringList" },
+        "signal_ids": { "$ref": "#/$defs/stringList" },
+        "evidence_ids": { "$ref": "#/$defs/evidenceIds" },
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/topicFinding" } },
+        "counter_evidence_ids": { "$ref": "#/$defs/evidenceIds" },
+        "unknowns": { "$ref": "#/$defs/stringList" },
+        "engineering_implications": { "$ref": "#/$defs/stringList" },
+        "next_checks": { "$ref": "#/$defs/stringList" },
+        "supersedes": { "type": ["string", "null"] },
+        "superseded_by": { "type": ["string", "null"] }
+      }
+    },
+    "topicChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["change_id", "change_type", "topic_id", "candidate_id", "revision"],
+      "properties": {
+        "change_id": { "$ref": "#/$defs/uuidId" },
+        "change_type": { "enum": ["create", "update", "link", "status_change", "supersede"] },
+        "topic_id": { "$ref": "#/$defs/uuidId" },
+        "candidate_id": { "$ref": "#/$defs/uuidId" },
+        "revision": { "$ref": "#/$defs/topicRevision" }
+      }
+    }
+  }
+}
